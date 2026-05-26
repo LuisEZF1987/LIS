@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Facturacion — Dimed-LIS{% endblock %}
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h2 class="text-xl font-semibold">Facturacion</h2>
+  <button onclick="newInvoice()" class="bg-blue-600 hover:bg-blue-500 text-white text-sm px-4 py-2 rounded-lg transition-colors">
+    + Nueva Factura
+  </button>
+</div>
+
+<!-- Filters -->
+<div class="card mb-4">
+  <div class="flex flex-wrap gap-3">
+    <input id="invSearch" type="text" placeholder="Buscar por numero o paciente..."
+      class="bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm flex-1 min-w-48 focus:outline-none focus:border-blue-500">
+    <select id="invStatus" class="bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm">
+      <option value="">Todos los estados</option>
+      <option value="draft">Borrador</option>
+      <option value="validated">Validada</option>
+      <option value="posted">Contabilizada</option>
+      <option value="paid">Pagada</option>
+      <option value="cancelled">Anulada</option>
+    </select>
+    <input id="invFrom" type="date" class="bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm">
+    <input id="invTo" type="date" class="bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm">
+    <button onclick="loadInvoices()" class="bg-slate-700 hover:bg-slate-600 text-white text-sm px-4 py-1.5 rounded-lg">Buscar</button>
+  </div>
+</div>
+
+<!-- Invoice Table -->
+<div class="card">
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead><tr class="text-slate-400 text-left border-b border-slate-700">
+        <th class="pb-2">Numero</th><th class="pb-2">Fecha</th><th class="pb-2">Paciente</th>
+        <th class="pb-2">Subtotal</th><th class="pb-2">IVA</th><th class="pb-2 text-right">Total</th>
+        <th class="pb-2">Estado</th><th class="pb-2">SRI</th><th class="pb-2">Acciones</th>
+      </tr></thead>
+      <tbody id="invBody">
+        <tr><td colspan="9" class="text-slate-500 py-4 text-center">Cargando...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadInvoices() {
+  const params = new URLSearchParams();
+  const s = document.getElementById('invStatus').value;
+  if (s) params.set('status', s);
+  const res = await api('/api/billing/invoices?' + params);
+  if (!res?.ok) return;
+  const data = await res.json();
+  const tbody = document.getElementById('invBody');
+  if (!data.invoices?.length) { tbody.innerHTML = '<tr><td colspan="9" class="text-slate-500 py-4 text-center">Sin facturas</td></tr>'; return; }
+  tbody.innerHTML = data.invoices.map(i => `<tr class="border-b border-slate-800">
+    <td class="py-2 text-blue-400">${i.invoice_number||'(borrador)'}</td>
+    <td class="py-2 text-slate-400">${new Date(i.created_at).toLocaleDateString('es-EC')}</td>
+    <td class="py-2">${i.patient_name||'-'}</td>
+    <td class="py-2">$${(i.subtotal||0).toFixed(2)}</td>
+    <td class="py-2">$${(i.tax_amount||0).toFixed(2)}</td>
+    <td class="py-2 text-right font-medium">$${(i.total||0).toFixed(2)}</td>
+    <td class="py-2"><span class="px-2 py-0.5 rounded text-xs ${invStatusColor(i.status)}">${invStatusLabel(i.status)}</span></td>
+    <td class="py-2">${sriStatus(i)}</td>
+    <td class="py-2 flex gap-1">
+      ${i.status==='draft'?`<button onclick="validateInv(${i.id})" class="text-green-400 hover:text-green-300 text-xs">Validar</button>`:''}
+      ${i.status==='validated'?`<button onclick="sendSri(${i.id})" class="text-yellow-400 hover:text-yellow-300 text-xs">Enviar SRI</button>`:''}
+      <button onclick="pdfInv(${i.id})" class="text-blue-400 hover:text-blue-300 text-xs">PDF</button>
+    </td>
+  </tr>`).join('');
+}
+function invStatusColor(s){return{draft:'bg-slate-700 text-slate-300',validated:'bg-blue-900 text-blue-300',posted:'bg-green-900 text-green-300',paid:'bg-green-900 text-green-300',cancelled:'bg-red-900 text-red-300'}[s]||'';}
+function invStatusLabel(s){return{draft:'Borrador',validated:'Validada',posted:'Contabilizada',paid:'Pagada',cancelled:'Anulada'}[s]||s;}
+function sriStatus(i){return i.sri_estado==='autorizado'?'<span class="text-green-400 text-xs">Autorizada</span>':i.sri_estado?`<span class="text-yellow-400 text-xs">${i.sri_estado}</span>`:'<span class="text-slate-500 text-xs">-</span>';}
+function newInvoice(){alert('Formulario nueva factura — pendiente');}
+function validateInv(id){api('/api/billing/invoices/'+id+'/validate',{method:'POST'}).then(()=>loadInvoices());}
+function sendSri(id){api('/api/billing/invoices/'+id+'/sri',{method:'POST'}).then(()=>loadInvoices());}
+function pdfInv(id){window.open('/api/billing/invoices/'+id+'/pdf','_blank');}
+loadInvoices();
+</script>
+{% endblock %}

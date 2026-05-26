@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}Caja — Dimed-LIS{% endblock %}
+{% block content %}
+<h2 class="text-xl font-semibold mb-6">Caja / Recepcion</h2>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+  <!-- Patient search + new order -->
+  <div class="lg:col-span-2">
+    <div class="card mb-4">
+      <h3 class="text-sm font-medium text-slate-300 mb-3">Buscar Paciente</h3>
+      <div class="flex gap-2">
+        <input id="patSearch" type="text" placeholder="Cedula o nombre del paciente..."
+          class="bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm flex-1 focus:outline-none focus:border-blue-500"
+          onkeyup="if(event.key==='Enter')searchPatient()">
+        <button onclick="searchPatient()" class="bg-blue-600 hover:bg-blue-500 text-white text-sm px-4 py-1.5 rounded-lg">Buscar</button>
+        <button onclick="newPatient()" class="bg-slate-700 hover:bg-slate-600 text-white text-sm px-4 py-1.5 rounded-lg">Nuevo</button>
+      </div>
+      <div id="patResult" class="mt-3 hidden"></div>
+    </div>
+
+    <!-- Service selection -->
+    <div class="card">
+      <h3 class="text-sm font-medium text-slate-300 mb-3">Seleccionar Pruebas</h3>
+      <input id="svcSearch" type="text" placeholder="Buscar prueba..."
+        class="bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm w-full mb-3 focus:outline-none focus:border-blue-500"
+        oninput="filterCatalog()">
+      <div id="catalogList" class="max-h-64 overflow-y-auto space-y-1"></div>
+    </div>
+  </div>
+
+  <!-- Order summary -->
+  <div>
+    <div class="card sticky top-6">
+      <h3 class="text-sm font-medium text-slate-300 mb-3">Resumen de Orden</h3>
+      <div id="orderItems" class="space-y-2 mb-4 text-sm">
+        <p class="text-slate-500">Seleccione pruebas del catalogo</p>
+      </div>
+      <div class="border-t border-slate-700 pt-3 space-y-1 text-sm">
+        <div class="flex justify-between"><span class="text-slate-400">Subtotal</span><span id="orderSubtotal">$0.00</span></div>
+        <div class="flex justify-between"><span class="text-slate-400">IVA</span><span id="orderIva">$0.00</span></div>
+        <div class="flex justify-between font-bold text-lg"><span>Total</span><span id="orderTotal">$0.00</span></div>
+      </div>
+      <div class="mt-4 space-y-2">
+        <select id="payMethod" class="bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm w-full">
+          <option value="efectivo">Efectivo</option>
+          <option value="tarjeta_debito">Tarjeta Debito</option>
+          <option value="tarjeta_credito">Tarjeta Credito</option>
+          <option value="transferencia">Transferencia</option>
+        </select>
+        <button onclick="createOrder()" class="w-full bg-green-600 hover:bg-green-500 text-white font-medium rounded-lg py-2 transition-colors">
+          Cobrar y Facturar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let catalog = [];
+let orderLines = [];
+let selectedPatient = null;
+
+async function loadCatalog() {
+  const res = await api('/api/billing/catalog');
+  if (!res?.ok) return;
+  const data = await res.json();
+  catalog = data.items || [];
+  renderCatalog(catalog);
+}
+
+function renderCatalog(items) {
+  document.getElementById('catalogList').innerHTML = items.map(c => `
+    <div class="flex justify-between items-center bg-slate-800/50 rounded px-3 py-2 cursor-pointer hover:bg-slate-800"
+         onclick="addToOrder(${c.id}, '${c.code}', '${c.name.replace(/'/g,"\\'")}', ${c.price})">
+      <div><span class="text-slate-400 text-xs">${c.code}</span> <span class="text-sm">${c.name}</span></div>
+      <span class="text-green-400 text-sm font-medium">$${c.price.toFixed(2)}</span>
+    </div>
+  `).join('');
+}
+
+function filterCatalog() {
+  const q = document.getElementById('svcSearch').value.toLowerCase();
+  renderCatalog(catalog.filter(c => c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q)));
+}
+
+function addToOrder(id, code, name, price) {
+  if (orderLines.find(l => l.id === id)) return;
+  orderLines.push({id, code, name, price, qty: 1});
+  renderOrder();
+}
+
+function removeFromOrder(id) {
+  orderLines = orderLines.filter(l => l.id !== id);
+  renderOrder();
+}
+
+function renderOrder() {
+  const div = document.getElementById('orderItems');
+  if (!orderLines.length) { div.innerHTML = '<p class="text-slate-500">Seleccione pruebas del catalogo</p>'; }
+  else { div.innerHTML = orderLines.map(l => `
+    <div class="flex justify-between items-center">
+      <span>${l.name}</span>
+      <div class="flex items-center gap-2">
+        <span class="text-green-400">$${l.price.toFixed(2)}</span>
+        <button onclick="removeFromOrder(${l.id})" class="text-red-400 hover:text-red-300 text-xs">x</button>
+      </div>
+    </div>
+  `).join(''); }
+  const sub = orderLines.reduce((s,l) => s + l.price * l.qty, 0);
+  document.getElementById('orderSubtotal').textContent = '$' + sub.toFixed(2);
+  document.getElementById('orderIva').textContent = '$0.00';
+  document.getElementById('orderTotal').textContent = '$' + sub.toFixed(2);
+}
+
+function searchPatient() { alert('Busqueda de paciente — pendiente de integracion'); }
+function newPatient() { alert('Registro de paciente — pendiente de integracion'); }
+function createOrder() { alert('Crear orden y factura — pendiente de integracion'); }
+
+loadCatalog();
+</script>
+{% endblock %}

@@ -1,0 +1,105 @@
+version: "3.8"
+
+x-common: &common
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  postgres:
+    <<: *common
+    image: postgres:16-alpine
+    container_name: dimed-lis-postgres
+    environment:
+      POSTGRES_USER: ${PG_USER:-dimed}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_DB: ${DB_NAME:-dimed_lis}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-dimed} -d ${DB_NAME:-dimed_lis}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend
+
+  lis:
+    <<: *common
+    build: ./lis
+    container_name: dimed-lis-core
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      GH_DB_NAME: ${DB_NAME:-dimed_lis}
+      PG_USER: ${PG_USER:-dimed}
+      PG_PASSWORD: ${PG_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      LIS_PORT: "9008"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+
+  billing:
+    <<: *common
+    build: ./billing
+    container_name: dimed-lis-billing
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-dimed_lis}
+      PG_USER: ${PG_USER:-dimed}
+      PG_PASSWORD: ${PG_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      BILLING_PORT: "9009"
+      SRI_AMBIENTE: ${SRI_AMBIENTE:-1}
+      SRI_RUC: ${SRI_RUC:-}
+      SRI_RAZON_SOCIAL: ${SRI_RAZON_SOCIAL:-}
+      SRI_NOMBRE_COMERCIAL: ${SRI_NOMBRE_COMERCIAL:-}
+      SRI_DIRECCION_MATRIZ: ${SRI_DIRECCION_MATRIZ:-}
+      SRI_CERT_PATH: ${SRI_CERT_PATH:-}
+      SRI_CERT_PASSWORD: ${SRI_CERT_PASSWORD:-}
+    volumes:
+      - certs:/certs:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+
+  web:
+    <<: *common
+    build: ./web
+    container_name: dimed-lis-web
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-dimed_lis}
+      PG_USER: ${PG_USER:-dimed}
+      PG_PASSWORD: ${PG_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      LIS_URL: http://lis:9008
+      BILLING_URL: http://billing:9009
+      WEB_PORT: "9000"
+    ports:
+      - "${WEB_PORT:-9000}:9000"
+    depends_on:
+      - lis
+      - billing
+    networks:
+      - backend
+
+volumes:
+  pgdata:
+  certs:
+
+networks:
+  backend:
+    driver: bridge

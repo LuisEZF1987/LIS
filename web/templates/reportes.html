@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Reportes — Dimed-LIS{% endblock %}
+{% block content %}
+<h2 class="text-xl font-semibold mb-6">Reportes Financieros</h2>
+
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+  <div class="card hover:border-blue-500/50 cursor-pointer transition-colors" onclick="openReport('daily-sales')">
+    <h3 class="text-sm font-medium text-blue-400 mb-1">Ventas Diarias</h3>
+    <p class="text-xs text-slate-400">Detalle de ventas del dia por prueba y metodo de pago</p>
+  </div>
+  <div class="card hover:border-blue-500/50 cursor-pointer transition-colors" onclick="openReport('revenue-by-category')">
+    <h3 class="text-sm font-medium text-blue-400 mb-1">Ingresos por Categoria</h3>
+    <p class="text-xs text-slate-400">Ingresos agrupados por tipo de prueba</p>
+  </div>
+  <div class="card hover:border-blue-500/50 cursor-pointer transition-colors" onclick="openReport('cxc')">
+    <h3 class="text-sm font-medium text-blue-400 mb-1">Cuentas por Cobrar</h3>
+    <p class="text-xs text-slate-400">Saldos pendientes con envejecimiento de cartera</p>
+  </div>
+  <div class="card hover:border-blue-500/50 cursor-pointer transition-colors" onclick="openReport('trial-balance')">
+    <h3 class="text-sm font-medium text-blue-400 mb-1">Balance de Comprobacion</h3>
+    <p class="text-xs text-slate-400">Saldos de cuentas contables del periodo</p>
+  </div>
+  <div class="card hover:border-blue-500/50 cursor-pointer transition-colors" onclick="openReport('income-statement')">
+    <h3 class="text-sm font-medium text-blue-400 mb-1">Estado de Resultados</h3>
+    <p class="text-xs text-slate-400">Ingresos, gastos y utilidad del periodo</p>
+  </div>
+  <div class="card hover:border-blue-500/50 cursor-pointer transition-colors" onclick="openReport('sri-comprobantes')">
+    <h3 class="text-sm font-medium text-blue-400 mb-1">Comprobantes SRI</h3>
+    <p class="text-xs text-slate-400">Estado de comprobantes electronicos enviados al SRI</p>
+  </div>
+</div>
+
+<div id="reportContent" class="card mt-6 hidden">
+  <div class="flex justify-between items-center mb-4">
+    <h3 id="reportTitle" class="text-sm font-medium text-slate-300"></h3>
+    <button onclick="document.getElementById('reportContent').classList.add('hidden')" class="text-slate-400 hover:text-white text-sm">Cerrar</button>
+  </div>
+  <div id="reportBody" class="text-sm"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function openReport(type) {
+  const titles = {
+    'daily-sales': 'Ventas Diarias',
+    'revenue-by-category': 'Ingresos por Categoria',
+    'cxc': 'Cuentas por Cobrar',
+    'trial-balance': 'Balance de Comprobacion',
+    'income-statement': 'Estado de Resultados',
+    'sri-comprobantes': 'Comprobantes SRI'
+  };
+  document.getElementById('reportTitle').textContent = titles[type] || type;
+  document.getElementById('reportBody').innerHTML = '<p class="text-slate-500">Cargando...</p>';
+  document.getElementById('reportContent').classList.remove('hidden');
+
+  let url;
+  if (type === 'cxc') url = '/api/billing/cxc/summary';
+  else if (type === 'daily-sales') url = '/api/billing/reports/daily-sales';
+  else if (type === 'revenue-by-category') url = '/api/billing/reports/revenue-by-category';
+  else { document.getElementById('reportBody').innerHTML = '<p class="text-slate-400">Reporte pendiente de implementacion</p>'; return; }
+
+  const res = await api(url);
+  if (!res?.ok) { document.getElementById('reportBody').innerHTML = '<p class="text-red-400">Error al cargar</p>'; return; }
+  const data = await res.json();
+  document.getElementById('reportBody').innerHTML = '<pre class="text-xs text-slate-300 overflow-x-auto">' + JSON.stringify(data, null, 2) + '</pre>';
+}
+</script>
+{% endblock %}

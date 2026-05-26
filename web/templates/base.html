@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Dimed-LIS{% endblock %}</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+body{background:#020617;font-family:system-ui,sans-serif;color:#e2e8f0}
+.sidebar{background:rgba(15,23,42,0.8);border-right:1px solid rgba(51,65,85,0.5)}
+.nav-item{display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0.75rem;border-radius:0.5rem;color:#94a3b8;font-size:0.875rem;transition:all 0.15s}
+.nav-item:hover,.nav-item.active{background:rgba(96,165,250,0.1);color:#60a5fa}
+.card{background:rgba(15,23,42,0.6);border:1px solid rgba(51,65,85,0.5);border-radius:0.75rem;padding:1.25rem}
+</style>
+{% block head %}{% endblock %}
+</head>
+<body class="min-h-screen flex">
+<!-- Sidebar -->
+<aside class="sidebar w-56 min-h-screen p-4 flex flex-col shrink-0">
+  <div class="mb-6">
+    <h1 class="text-lg font-bold"><span class="text-white">Dimed</span><span class="text-blue-400">-LIS</span></h1>
+    <p class="text-slate-500 text-xs">Laboratorio</p>
+  </div>
+  <nav class="space-y-1 flex-1" id="sideNav">
+    <a href="/app/dashboard" class="nav-item" data-page="dashboard">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+      Dashboard
+    </a>
+    <a href="/app/laboratorio" class="nav-item" data-page="laboratorio">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>
+      Laboratorio
+    </a>
+    <a href="/app/caja" class="nav-item" data-page="caja">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+      Caja
+    </a>
+    <a href="/app/facturacion" class="nav-item" data-page="facturacion">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z"/></svg>
+      Facturacion
+    </a>
+    <a href="/app/pacientes" class="nav-item" data-page="pacientes">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+      Pacientes
+    </a>
+    <a href="/app/reportes" class="nav-item" data-page="reportes">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+      Reportes
+    </a>
+  </nav>
+  <div class="border-t border-slate-700 pt-3 mt-3">
+    <div class="text-xs text-slate-500 mb-2" id="userInfo"></div>
+    <button onclick="logout()" class="nav-item text-red-400 hover:text-red-300 w-full">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+      Cerrar Sesion
+    </button>
+  </div>
+</aside>
+
+<!-- Main content -->
+<main class="flex-1 p-6 overflow-auto">
+  <div class="max-w-7xl mx-auto">
+    {% block content %}{% endblock %}
+  </div>
+</main>
+
+<script>
+// Highlight active nav item
+const page = '{{ page|default("dashboard") }}';
+document.querySelectorAll('.nav-item').forEach(el => {
+  if (el.dataset.page === page) el.classList.add('active');
+});
+// User info
+const user = JSON.parse(sessionStorage.getItem('user') || '{}');
+const ui = document.getElementById('userInfo');
+if (ui && user.full_name) ui.textContent = user.full_name + ' (' + user.role + ')';
+// Role-based nav visibility
+const roleAccess = {
+  dashboard: ['admin','recepcion','laboratorista','bioquimico','contador'],
+  laboratorio: ['admin','laboratorista','bioquimico'],
+  caja: ['admin','recepcion','contador'],
+  facturacion: ['admin','contador'],
+  pacientes: ['admin','recepcion','laboratorista'],
+  reportes: ['admin','contador']
+};
+if (user.role) {
+  document.querySelectorAll('.nav-item[data-page]').forEach(el => {
+    const p = el.dataset.page;
+    if (roleAccess[p] && !roleAccess[p].includes(user.role)) el.style.display = 'none';
+  });
+}
+async function logout() {
+  await fetch('/api/auth/logout', {method:'POST'});
+  sessionStorage.clear();
+  window.location.href = '/login';
+}
+// Helper for API calls
+async function api(url, opts={}) {
+  const res = await fetch(url, {headers:{'Content-Type':'application/json'}, ...opts});
+  if (res.status === 401) { window.location.href = '/login'; return null; }
+  return res;
+}
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

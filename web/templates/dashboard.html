@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Dimed-LIS{% endblock %}
+{% block content %}
+<h2 class="text-xl font-semibold mb-6">Dashboard</h2>
+
+<!-- KPI Cards -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+  <div class="card">
+    <p class="text-slate-400 text-xs uppercase tracking-wide">Muestras Hoy</p>
+    <p class="text-2xl font-bold text-white mt-1" id="kpiSamples">-</p>
+  </div>
+  <div class="card">
+    <p class="text-slate-400 text-xs uppercase tracking-wide">Pendientes Validacion</p>
+    <p class="text-2xl font-bold text-yellow-400 mt-1" id="kpiPending">-</p>
+  </div>
+  <div class="card">
+    <p class="text-slate-400 text-xs uppercase tracking-wide">Ventas Hoy</p>
+    <p class="text-2xl font-bold text-green-400 mt-1" id="kpiSales">-</p>
+  </div>
+  <div class="card">
+    <p class="text-slate-400 text-xs uppercase tracking-wide">CxC Pendiente</p>
+    <p class="text-2xl font-bold text-red-400 mt-1" id="kpiCxC">-</p>
+  </div>
+</div>
+
+<!-- Recent Activity -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+  <div class="card">
+    <h3 class="text-sm font-medium text-slate-300 mb-3">Ultimas Muestras</h3>
+    <div id="recentSamples" class="space-y-2 text-sm">
+      <p class="text-slate-500">Cargando...</p>
+    </div>
+  </div>
+  <div class="card">
+    <h3 class="text-sm font-medium text-slate-300 mb-3">Ultimas Facturas</h3>
+    <div id="recentInvoices" class="space-y-2 text-sm">
+      <p class="text-slate-500">Cargando...</p>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadDashboard() {
+  try {
+    const [samplesRes, salesRes] = await Promise.allSettled([
+      api('/api/lis/stats'),
+      api('/api/billing/reports/daily-sales')
+    ]);
+    if (samplesRes.status === 'fulfilled' && samplesRes.value?.ok) {
+      const d = await samplesRes.value.json();
+      document.getElementById('kpiSamples').textContent = d.samples_today ?? '-';
+      document.getElementById('kpiPending').textContent = d.pending_validation ?? '-';
+    }
+    if (salesRes.status === 'fulfilled' && salesRes.value?.ok) {
+      const d = await salesRes.value.json();
+      document.getElementById('kpiSales').textContent = '$' + (d.total_today ?? 0).toFixed(2);
+    }
+  } catch(e) { console.error('Dashboard load error', e); }
+}
+loadDashboard();
+</script>
+{% endblock %}

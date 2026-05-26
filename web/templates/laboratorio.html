@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Laboratorio — Dimed-LIS{% endblock %}
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h2 class="text-xl font-semibold">Laboratorio</h2>
+  <button onclick="showNewSample()" class="bg-blue-600 hover:bg-blue-500 text-white text-sm px-4 py-2 rounded-lg transition-colors">
+    + Nueva Muestra
+  </button>
+</div>
+
+<!-- Tabs -->
+<div class="flex gap-2 mb-4">
+  <button onclick="switchTab('worklist')" class="tab-btn active" data-tab="worklist">Worklist</button>
+  <button onclick="switchTab('samples')" class="tab-btn" data-tab="samples">Muestras</button>
+  <button onclick="switchTab('analytes')" class="tab-btn" data-tab="analytes">Analitos</button>
+  <button onclick="switchTab('qc')" class="tab-btn" data-tab="qc">Control Calidad</button>
+  <button onclick="switchTab('instruments')" class="tab-btn" data-tab="instruments">Equipos</button>
+</div>
+<style>
+.tab-btn{padding:0.375rem 0.75rem;border-radius:0.5rem;font-size:0.875rem;color:#94a3b8;background:transparent;border:1px solid transparent;transition:all 0.15s}
+.tab-btn:hover{color:#e2e8f0}
+.tab-btn.active{background:rgba(96,165,250,0.15);color:#60a5fa;border-color:rgba(96,165,250,0.3)}
+.tab-content{display:none}.tab-content.active{display:block}
+</style>
+
+<!-- Worklist -->
+<div class="tab-content active" id="tab-worklist">
+  <div class="card">
+    <div class="flex gap-2 mb-3">
+      <input id="wlSearch" type="text" placeholder="Buscar por paciente o codigo..."
+        class="bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm flex-1 focus:outline-none focus:border-blue-500">
+      <select id="wlStatus" class="bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm">
+        <option value="">Todos</option>
+        <option value="collected">Recolectada</option>
+        <option value="received">Recibida</option>
+        <option value="in_process">En Proceso</option>
+        <option value="completed">Completada</option>
+      </select>
+    </div>
+    <div id="worklistTable" class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead><tr class="text-slate-400 text-left border-b border-slate-700">
+          <th class="pb-2">Codigo</th><th class="pb-2">Paciente</th><th class="pb-2">Tipo</th>
+          <th class="pb-2">Estado</th><th class="pb-2">Fecha</th><th class="pb-2">Acciones</th>
+        </tr></thead>
+        <tbody id="wlBody"><tr><td colspan="6" class="text-slate-500 py-4 text-center">Cargando...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Samples -->
+<div class="tab-content" id="tab-samples">
+  <div class="card"><p class="text-slate-400">Gestion de muestras — busqueda avanzada y detalle.</p></div>
+</div>
+
+<!-- Analytes -->
+<div class="tab-content" id="tab-analytes">
+  <div class="card"><p class="text-slate-400">Catalogo de analitos y rangos de referencia.</p></div>
+</div>
+
+<!-- QC -->
+<div class="tab-content" id="tab-qc">
+  <div class="card"><p class="text-slate-400">Control de calidad y graficos de Levey-Jennings.</p></div>
+</div>
+
+<!-- Instruments -->
+<div class="tab-content" id="tab-instruments">
+  <div class="card"><p class="text-slate-400">Gestion de analizadores y equipos.</p></div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
+  document.getElementById(`tab-${tab}`).classList.add('active');
+}
+
+async function loadWorklist() {
+  const res = await api('/api/lis/worklist');
+  if (!res?.ok) return;
+  const data = await res.json();
+  const tbody = document.getElementById('wlBody');
+  if (!data.items?.length) { tbody.innerHTML = '<tr><td colspan="6" class="text-slate-500 py-4 text-center">Sin muestras pendientes</td></tr>'; return; }
+  tbody.innerHTML = data.items.map(s => `<tr class="border-b border-slate-800">
+    <td class="py-2 text-blue-400">${s.sample_code}</td>
+    <td class="py-2">${s.patient_name||'-'}</td>
+    <td class="py-2">${s.sample_type}</td>
+    <td class="py-2"><span class="px-2 py-0.5 rounded text-xs ${statusColor(s.status)}">${statusLabel(s.status)}</span></td>
+    <td class="py-2 text-slate-400">${new Date(s.collection_date).toLocaleDateString('es-EC')}</td>
+    <td class="py-2"><button onclick="openSample(${s.id})" class="text-blue-400 hover:text-blue-300 text-xs">Ver</button></td>
+  </tr>`).join('');
+}
+
+function statusColor(s) {
+  return {collected:'bg-slate-700 text-slate-300',received:'bg-blue-900 text-blue-300',
+    in_process:'bg-yellow-900 text-yellow-300',completed:'bg-green-900 text-green-300',
+    rejected:'bg-red-900 text-red-300'}[s] || 'bg-slate-700 text-slate-300';
+}
+function statusLabel(s) {
+  return {collected:'Recolectada',received:'Recibida',in_process:'En Proceso',
+    completed:'Completada',rejected:'Rechazada'}[s] || s;
+}
+function showNewSample() { alert('Formulario de nueva muestra — pendiente'); }
+function openSample(id) { alert('Detalle de muestra #' + id + ' — pendiente'); }
+
+loadWorklist();
+</script>
+{% endblock %}

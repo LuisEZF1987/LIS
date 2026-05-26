@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Pacientes — Dimed-LIS{% endblock %}
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h2 class="text-xl font-semibold">Pacientes</h2>
+  <button onclick="showNewPatient()" class="bg-blue-600 hover:bg-blue-500 text-white text-sm px-4 py-2 rounded-lg transition-colors">
+    + Nuevo Paciente
+  </button>
+</div>
+
+<div class="card mb-4">
+  <div class="flex gap-2">
+    <input id="patQ" type="text" placeholder="Buscar por cedula, nombre..."
+      class="bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm flex-1 focus:outline-none focus:border-blue-500"
+      onkeyup="if(event.key==='Enter')loadPatients()">
+    <button onclick="loadPatients()" class="bg-slate-700 hover:bg-slate-600 text-white text-sm px-4 py-1.5 rounded-lg">Buscar</button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead><tr class="text-slate-400 text-left border-b border-slate-700">
+        <th class="pb-2">Documento</th><th class="pb-2">Nombre</th><th class="pb-2">Genero</th>
+        <th class="pb-2">Telefono</th><th class="pb-2">Email</th><th class="pb-2">Ciudad</th>
+      </tr></thead>
+      <tbody id="patBody">
+        <tr><td colspan="6" class="text-slate-500 py-4 text-center">Busque un paciente</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadPatients() {
+  const q = document.getElementById('patQ').value;
+  if (!q) return;
+  const res = await api('/api/patients?q=' + encodeURIComponent(q));
+  if (!res?.ok) return;
+  const data = await res.json();
+  const tbody = document.getElementById('patBody');
+  if (!data.patients?.length) { tbody.innerHTML = '<tr><td colspan="6" class="text-slate-500 py-4 text-center">Sin resultados</td></tr>'; return; }
+  tbody.innerHTML = data.patients.map(p => `<tr class="border-b border-slate-800">
+    <td class="py-2 text-blue-400">${p.document_id}</td>
+    <td class="py-2">${p.full_name}</td>
+    <td class="py-2">${p.gender==='M'?'Masculino':'Femenino'}</td>
+    <td class="py-2 text-slate-400">${p.phone||'-'}</td>
+    <td class="py-2 text-slate-400">${p.email||'-'}</td>
+    <td class="py-2">${p.city||'-'}</td>
+  </tr>`).join('');
+}
+function showNewPatient() { alert('Formulario nuevo paciente — pendiente'); }
+</script>
+{% endblock %}

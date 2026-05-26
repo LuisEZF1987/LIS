@@ -1,0 +1,28 @@
+version: "3.8"
+
+services:
+  lis:
+    build: ./lis
+    volumes:
+      - ./lis/lis_app.py:/app/lis_app.py:ro
+    environment:
+      FLASK_DEBUG: "true"
+    command: ["python", "lis_app.py"]
+
+  billing:
+    build: ./billing
+    volumes:
+      - ./billing:/app:ro
+    environment:
+      FLASK_DEBUG: "true"
+    command: ["python", "billing_app.py"]
+
+  web:
+    build: ./web
+    volumes:
+      - ./web/app.py:/app/app.py:ro
+      - ./web/templates:/app/templates:ro
+      - ./web/static:/app/static:ro
+    environment:
+      FLASK_DEBUG: "true"
+    command: ["python", "app.py"]

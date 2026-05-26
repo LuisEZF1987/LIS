@@ -1,0 +1,8 @@
+flask==3.1.*
+psycopg2-binary==2.*
+PyJWT==2.*
+reportlab==4.*
+lxml==5.*
+zeep==4.*
+python-barcode==0.15.*
+gunicorn==23.*
