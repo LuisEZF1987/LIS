@@ -267,11 +267,18 @@ async function createOrder() {
 
   // 2. Validate invoice
   const res2 = await api(`/api/billing/invoices/${inv.id}/validate`, {method:'POST'});
+  let valData = {};
   if (!res2?.ok) { errDiv.textContent = 'Error al validar factura'; errDiv.classList.remove('hidden'); return; }
+  try { valData = await res2.json(); } catch(e) {}
 
   // 3. Post invoice
   const res3 = await api(`/api/billing/invoices/${inv.id}/post`, {method:'POST'});
-  if (!res3?.ok) { errDiv.textContent = 'Error al contabilizar'; errDiv.classList.remove('hidden'); return; }
+  if (!res3?.ok) {
+    let postErr = '';
+    try { const pe = await res3.json(); postErr = pe.error || ''; } catch(e) {}
+    errDiv.textContent = 'Error al contabilizar: ' + postErr;
+    errDiv.classList.remove('hidden'); return;
+  }
 
   // 4. Apply payment
   const total = orderLines.reduce((s,l) => s + l.price * l.qty, 0);
@@ -281,20 +288,24 @@ async function createOrder() {
     payment_source: document.getElementById('payMethod').value
   };
   const res4 = await api('/api/billing/payments/apply', {method:'POST', body: JSON.stringify(payBody)});
-  if (!res4?.ok) { errDiv.textContent = 'Error al aplicar pago'; errDiv.classList.remove('hidden'); return; }
+  if (!res4?.ok) {
+    let payErr = '';
+    try { const pe = await res4.json(); payErr = pe.error || ''; } catch(e) {}
+    errDiv.textContent = 'Error al aplicar pago: ' + payErr;
+    errDiv.classList.remove('hidden'); return;
+  }
 
   // 5. Create lab sample
   const sampleBody = {
     patient_document: selectedPatient.document_id,
     patient_name: selectedPatient.full_name,
-    sample_type: 'blood',
+    sample_type: 'sangre',
     analyte_ids: orderLines.map(l => l.id),
     notes: `Factura ${inv.invoice_number || inv.id}`
   };
   await api('/api/lis/samples', {method:'POST', body: JSON.stringify(sampleBody)});
 
-  const valData = await res2.json();
-  sucDiv.innerHTML = `Factura <strong>${valData.invoice_number || ''}</strong> creada y pagada. Muestra enviada a laboratorio.`;
+  sucDiv.innerHTML = `Factura <strong>${valData.invoice_number || inv.invoice_number || ''}</strong> creada y pagada. Muestra enviada a laboratorio.`;
   sucDiv.classList.remove('hidden');
 
   // Reset

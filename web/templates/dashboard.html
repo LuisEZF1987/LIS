@@ -132,7 +132,7 @@ async function loadDashboard() {
           <div><span class="text-blue-400">${i.invoice_number||'(borrador)'}</span> <span class="text-slate-500">— ${i.patient_name||'-'}</span></div>
           <div class="flex items-center gap-2">
             <span class="text-green-400 font-medium">$${(i.total||0).toFixed(2)}</span>
-            <span class="text-xs px-2 py-0.5 rounded ${i.status==='paid'?'bg-green-900 text-green-300':i.status==='posted'?'bg-blue-900 text-blue-300':'bg-slate-700 text-slate-300'}">${{draft:'Borrador',validated:'Validada',posted:'Contabilizada',paid:'Pagada',cancelled:'Anulada'}[i.status]||i.status}</span>
+            <span class="text-xs px-2 py-0.5 rounded ${i.status==='paid'?'bg-green-900 text-green-300':i.status==='posted'?'bg-blue-900 text-blue-300':'bg-slate-700 text-slate-300'}">${({draft:'Borrador',validated:'Validada',posted:'Contabilizada',paid:'Pagada',cancelled:'Anulada'})[i.status]||i.status}</span>
           </div>
         </div>`
       ).join('');

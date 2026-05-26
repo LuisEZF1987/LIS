@@ -218,6 +218,10 @@ function switchTab(tab) {
 }
 
 // ===== Status helpers =====
+function sampleTypeLabel(t) {
+  var m = {sangre:'Sangre',orina:'Orina',heces:'Heces',liquido:'Liquido',tejido:'Tejido',blood:'Sangre',urine:'Orina',stool:'Heces',csf:'LCR'};
+  return m[t] || t || '-';
+}
 function statusColor(s) {
   return {collected:'bg-slate-700 text-slate-300',received:'bg-blue-900 text-blue-300',
     in_process:'bg-yellow-900 text-yellow-300',completed:'bg-green-900 text-green-300',
@@ -251,7 +255,7 @@ async function loadWorklist() {
   tbody.innerHTML = items.map(s => `<tr class="border-b border-slate-800 hover:bg-slate-800/50">
     <td class="py-2 text-blue-400">${s.sample_code||s.id}</td>
     <td class="py-2">${s.patient_name||'-'}</td>
-    <td class="py-2">${{blood:'Sangre',urine:'Orina',stool:'Heces',csf:'LCR'}[s.sample_type]||s.sample_type||'-'}</td>
+    <td class="py-2">${sampleTypeLabel(s.sample_type)}</td>
     <td class="py-2"><span class="px-2 py-0.5 rounded text-xs ${statusColor(s.status)}">${statusLabel(s.status)}</span></td>
     <td class="py-2 text-slate-400">${s.collection_date ? new Date(s.collection_date).toLocaleDateString('es-EC') : '-'}</td>
     <td class="py-2">
@@ -280,7 +284,7 @@ async function openSample(id) {
     <div class="grid grid-cols-2 gap-2">
       <div><span class="text-slate-400">Paciente:</span> ${s.patient_name||'-'}</div>
       <div><span class="text-slate-400">Documento:</span> ${s.patient_document||'-'}</div>
-      <div><span class="text-slate-400">Tipo:</span> ${{blood:'Sangre',urine:'Orina',stool:'Heces',csf:'LCR'}[s.sample_type]||s.sample_type||'-'}</div>
+      <div><span class="text-slate-400">Tipo:</span> ${sampleTypeLabel(s.sample_type)}</div>
       <div><span class="text-slate-400">Estado:</span> <span class="px-2 py-0.5 rounded text-xs ${statusColor(s.status)}">${statusLabel(s.status)}</span></div>
       <div><span class="text-slate-400">Fecha:</span> ${s.collection_date ? new Date(s.collection_date).toLocaleString('es-EC') : '-'}</div>
       ${s.notes ? `<div class="col-span-2"><span class="text-slate-400">Notas:</span> ${s.notes}</div>` : ''}
@@ -365,7 +369,7 @@ async function loadSamples() {
   tbody.innerHTML = items.map(s => `<tr class="border-b border-slate-800 hover:bg-slate-800/50">
     <td class="py-2 text-blue-400">${s.sample_code||s.id}</td>
     <td class="py-2">${s.patient_name||'-'}</td>
-    <td class="py-2">${{blood:'Sangre',urine:'Orina',stool:'Heces',csf:'LCR'}[s.sample_type]||s.sample_type||'-'}</td>
+    <td class="py-2">${sampleTypeLabel(s.sample_type)}</td>
     <td class="py-2 text-slate-400">${s.result_count||'-'}</td>
     <td class="py-2"><span class="px-2 py-0.5 rounded text-xs ${statusColor(s.status)}">${statusLabel(s.status)}</span></td>
     <td class="py-2 text-slate-400">${s.collection_date ? new Date(s.collection_date).toLocaleDateString('es-EC') : '-'}</td>

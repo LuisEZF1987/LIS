@@ -553,15 +553,20 @@ def get_invoice(inv_id):
             )
             inv["accounts_receivable"] = [_dec(r) for r in cur.fetchall()]
 
-            # SRI info
-            cur.execute(
-                "SELECT * FROM lis_sri_documents WHERE invoice_id = %s "
-                "ORDER BY created_at DESC LIMIT 1",
-                (inv_id,),
-            )
-            sri_doc = cur.fetchone()
-            if sri_doc:
-                inv["sri"] = _dec(sri_doc)
+            # SRI info (table may not exist)
+            try:
+                cur.execute("SAVEPOINT _sri_get")
+                cur.execute(
+                    "SELECT * FROM sri_comprobantes WHERE invoice_id = %s "
+                    "ORDER BY created_at DESC LIMIT 1",
+                    (inv_id,),
+                )
+                sri_doc = cur.fetchone()
+                cur.execute("RELEASE SAVEPOINT _sri_get")
+                if sri_doc:
+                    inv["sri"] = _dec(sri_doc)
+            except Exception:
+                cur.execute("ROLLBACK TO SAVEPOINT _sri_get")
 
         return jsonify(inv), 200
 
@@ -1027,20 +1032,20 @@ def send_to_sri(inv_id):
             try:
                 with conn2.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur2:
                     cur2.execute(
-                        "INSERT INTO lis_sri_documents "
+                        "INSERT INTO sri_comprobantes "
                         "(invoice_id, tipo_comprobante, clave_acceso, "
-                        "xml_generado, xml_firmado, estado_recepcion, "
-                        "estado_autorizacion, numero_autorizacion, "
-                        "fecha_autorizacion, ambiente) "
-                        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *",
+                        "fecha_emision, xml_generado, xml_firmado, "
+                        "estado, numero_autorizacion, "
+                        "fecha_autorizacion) "
+                        "VALUES (%s,%s,%s,CURRENT_DATE,%s,%s,%s,%s,%s) RETURNING *",
                         (
                             inv_id,
                             "04" if is_credit_note else "01",
                             clave_acceso,
                             xml_str, xml_signed,
-                            estado, auth_estado,
-                            auth_numero, auth_fecha,
-                            SRI_AMBIENTE,
+                            auth_estado or estado,
+                            auth_numero,
+                            auth_fecha,
                         ),
                     )
                     sri_doc = _dec(cur2.fetchone())

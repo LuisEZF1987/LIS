@@ -523,7 +523,7 @@ def create_patient():
             patient = _row_to_dict(cur.fetchone())
         conn.commit()
         cu = request.current_user
-        log_audit(cu["user_id"], "CREATE_PATIENT", "lis_patients",
+        log_audit(cu.get("user_id") or cu.get("sub"), "CREATE_PATIENT", "lis_patients",
                   patient["id"], None, request.remote_addr)
         return jsonify({"patient": patient}), 201
     except Exception:
@@ -593,7 +593,7 @@ def update_patient(pid):
             patient = _row_to_dict(cur.fetchone())
         conn.commit()
         cu = request.current_user
-        log_audit(cu["user_id"], "UPDATE_PATIENT", "lis_patients",
+        log_audit(cu.get("user_id") or cu.get("sub"), "UPDATE_PATIENT", "lis_patients",
                   pid, None, request.remote_addr)
         return jsonify({"patient": patient}), 200
     except Exception:
