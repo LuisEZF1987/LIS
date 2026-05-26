@@ -3,17 +3,38 @@
 {% block content %}
 <div class="flex items-center justify-between mb-6">
   <h2 class="text-xl font-semibold">Facturacion</h2>
-  <button onclick="newInvoice()" class="bg-blue-600 hover:bg-blue-500 text-white text-sm px-4 py-2 rounded-lg transition-colors">
+  <button onclick="showNewInvoice()" class="bg-blue-600 hover:bg-blue-500 text-white text-sm px-4 py-2 rounded-lg transition-colors">
     + Nueva Factura
   </button>
+</div>
+
+<!-- Summary Cards -->
+<div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+  <div class="card">
+    <p class="text-slate-400 text-xs">Borradores</p>
+    <p class="text-xl font-bold text-slate-300" id="cntDraft">-</p>
+  </div>
+  <div class="card">
+    <p class="text-slate-400 text-xs">Por Enviar SRI</p>
+    <p class="text-xl font-bold text-yellow-400" id="cntValidated">-</p>
+  </div>
+  <div class="card">
+    <p class="text-slate-400 text-xs">Pagadas Hoy</p>
+    <p class="text-xl font-bold text-green-400" id="cntPaid">-</p>
+  </div>
+  <div class="card">
+    <p class="text-slate-400 text-xs">Total Hoy</p>
+    <p class="text-xl font-bold text-white" id="totalToday">-</p>
+  </div>
 </div>
 
 <!-- Filters -->
 <div class="card mb-4">
   <div class="flex flex-wrap gap-3">
     <input id="invSearch" type="text" placeholder="Buscar por numero o paciente..."
-      class="bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm flex-1 min-w-48 focus:outline-none focus:border-blue-500">
-    <select id="invStatus" class="bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm">
+      class="bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm flex-1 min-w-48 focus:outline-none focus:border-blue-500"
+      onkeyup="if(event.key==='Enter')loadInvoices()">
+    <select id="invStatus" class="bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm" onchange="loadInvoices()">
       <option value="">Todos los estados</option>
       <option value="draft">Borrador</option>
       <option value="validated">Validada</option>
@@ -42,42 +63,281 @@
     </table>
   </div>
 </div>
+
+<!-- New Invoice Modal -->
+<div id="invModal" class="fixed inset-0 bg-black/60 z-50 hidden items-center justify-center" onclick="if(event.target===this)closeInvModal()">
+  <div class="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+    <div class="flex justify-between items-center p-4 border-b border-slate-700">
+      <h3 class="font-medium">Nueva Factura</h3>
+      <button onclick="closeInvModal()" class="text-slate-400 hover:text-white text-lg">&times;</button>
+    </div>
+    <div class="p-4 space-y-4">
+      <!-- Patient -->
+      <div>
+        <label class="text-xs text-slate-400">Buscar Paciente</label>
+        <div class="flex gap-2">
+          <input id="nif_patSearch" placeholder="Cedula o nombre..." class="flex-1 bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm"
+            onkeyup="if(event.key==='Enter')searchInvPatient()">
+          <button type="button" onclick="searchInvPatient()" class="bg-slate-700 text-white text-sm px-3 py-1.5 rounded-lg">Buscar</button>
+        </div>
+        <div id="nif_patResults" class="mt-2"></div>
+        <div id="nif_patSelected" class="mt-2 p-2 bg-slate-800/50 rounded text-sm hidden"></div>
+      </div>
+      <!-- Lines -->
+      <div>
+        <label class="text-xs text-slate-400">Servicios</label>
+        <div class="flex gap-2 mb-2">
+          <input id="nif_svcSearch" placeholder="Buscar prueba..." class="flex-1 bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm" oninput="filterInvCatalog()">
+        </div>
+        <div id="nif_catalog" class="max-h-32 overflow-y-auto space-y-1 mb-3"></div>
+        <div id="nif_lines" class="space-y-1"></div>
+        <div class="border-t border-slate-700 pt-2 mt-2 text-right">
+          <span class="text-slate-400">Total:</span> <span id="nif_total" class="text-lg font-bold">$0.00</span>
+        </div>
+      </div>
+      <div id="nif_error" class="text-red-400 text-sm hidden"></div>
+      <button onclick="submitNewInvoice()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg py-2">Crear Factura Borrador</button>
+    </div>
+  </div>
+</div>
+
+<!-- Invoice Detail Modal -->
+<div id="invDetailModal" class="fixed inset-0 bg-black/60 z-50 hidden items-center justify-center" onclick="if(event.target===this)closeInvDetail()">
+  <div class="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+    <div class="flex justify-between items-center p-4 border-b border-slate-700">
+      <h3 class="font-medium" id="invDetailTitle">Factura</h3>
+      <button onclick="closeInvDetail()" class="text-slate-400 hover:text-white text-lg">&times;</button>
+    </div>
+    <div id="invDetailBody" class="p-4"></div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+let invCatalog = [];
+let invLines = [];
+let invPatient = null;
+
 async function loadInvoices() {
   const params = new URLSearchParams();
   const s = document.getElementById('invStatus').value;
+  const q = document.getElementById('invSearch').value.trim();
   if (s) params.set('status', s);
+  if (q) params.set('q', q);
   const res = await api('/api/billing/invoices?' + params);
   if (!res?.ok) return;
   const data = await res.json();
+  const invoices = data.invoices || [];
   const tbody = document.getElementById('invBody');
-  if (!data.invoices?.length) { tbody.innerHTML = '<tr><td colspan="9" class="text-slate-500 py-4 text-center">Sin facturas</td></tr>'; return; }
-  tbody.innerHTML = data.invoices.map(i => `<tr class="border-b border-slate-800">
+
+  // Counters
+  let draft=0, validated=0, paid=0, todayTotal=0;
+  const today = new Date().toISOString().substring(0,10);
+  invoices.forEach(i => {
+    if (i.status==='draft') draft++;
+    if (i.status==='validated') validated++;
+    if (i.status==='paid') { paid++; if ((i.created_at||'').substring(0,10)===today) todayTotal += i.total||0; }
+    if ((i.created_at||'').substring(0,10)===today && i.status!=='cancelled') todayTotal += 0;
+  });
+  document.getElementById('cntDraft').textContent = draft;
+  document.getElementById('cntValidated').textContent = validated;
+  document.getElementById('cntPaid').textContent = paid;
+
+  // Daily sales total from API
+  const salesRes = await api('/api/billing/reports/daily-sales');
+  if (salesRes?.ok) {
+    const sd = await salesRes.json();
+    document.getElementById('totalToday').textContent = '$' + (sd.total_today ?? sd.total ?? 0).toFixed(2);
+  }
+
+  if (!invoices.length) { tbody.innerHTML = '<tr><td colspan="9" class="text-slate-500 py-4 text-center">Sin facturas</td></tr>'; return; }
+  tbody.innerHTML = invoices.map(i => `<tr class="border-b border-slate-800 hover:bg-slate-800/50 cursor-pointer" ondblclick="viewInvoice(${i.id})">
     <td class="py-2 text-blue-400">${i.invoice_number||'(borrador)'}</td>
-    <td class="py-2 text-slate-400">${new Date(i.created_at).toLocaleDateString('es-EC')}</td>
+    <td class="py-2 text-slate-400">${i.created_at ? new Date(i.created_at).toLocaleDateString('es-EC') : '-'}</td>
     <td class="py-2">${i.patient_name||'-'}</td>
-    <td class="py-2">$${(i.subtotal||0).toFixed(2)}</td>
+    <td class="py-2">$${(i.subtotal_0||i.subtotal||0).toFixed(2)}</td>
     <td class="py-2">$${(i.tax_amount||0).toFixed(2)}</td>
     <td class="py-2 text-right font-medium">$${(i.total||0).toFixed(2)}</td>
     <td class="py-2"><span class="px-2 py-0.5 rounded text-xs ${invStatusColor(i.status)}">${invStatusLabel(i.status)}</span></td>
     <td class="py-2">${sriStatus(i)}</td>
-    <td class="py-2 flex gap-1">
-      ${i.status==='draft'?`<button onclick="validateInv(${i.id})" class="text-green-400 hover:text-green-300 text-xs">Validar</button>`:''}
-      ${i.status==='validated'?`<button onclick="sendSri(${i.id})" class="text-yellow-400 hover:text-yellow-300 text-xs">Enviar SRI</button>`:''}
-      <button onclick="pdfInv(${i.id})" class="text-blue-400 hover:text-blue-300 text-xs">PDF</button>
+    <td class="py-2">
+      <div class="flex gap-1 flex-wrap">
+        ${i.status==='draft'?`<button onclick="validateInv(${i.id})" class="text-green-400 hover:text-green-300 text-xs">Validar</button>`:''}
+        ${i.status==='validated'?`<button onclick="postInv(${i.id})" class="text-blue-400 hover:text-blue-300 text-xs">Contab.</button>`:''}
+        ${i.status==='posted'?`<button onclick="sendSri(${i.id})" class="text-yellow-400 hover:text-yellow-300 text-xs">SRI</button>`:''}
+        ${['validated','posted','paid'].includes(i.status)?`<button onclick="pdfInv(${i.id})" class="text-blue-400 hover:text-blue-300 text-xs">PDF</button>`:''}
+        ${i.status==='draft'?`<button onclick="cancelInv(${i.id})" class="text-red-400 hover:text-red-300 text-xs">Anular</button>`:''}
+      </div>
     </td>
   </tr>`).join('');
 }
+
 function invStatusColor(s){return{draft:'bg-slate-700 text-slate-300',validated:'bg-blue-900 text-blue-300',posted:'bg-green-900 text-green-300',paid:'bg-green-900 text-green-300',cancelled:'bg-red-900 text-red-300'}[s]||'';}
 function invStatusLabel(s){return{draft:'Borrador',validated:'Validada',posted:'Contabilizada',paid:'Pagada',cancelled:'Anulada'}[s]||s;}
 function sriStatus(i){return i.sri_estado==='autorizado'?'<span class="text-green-400 text-xs">Autorizada</span>':i.sri_estado?`<span class="text-yellow-400 text-xs">${i.sri_estado}</span>`:'<span class="text-slate-500 text-xs">-</span>';}
-function newInvoice(){alert('Formulario nueva factura — pendiente');}
-function validateInv(id){api('/api/billing/invoices/'+id+'/validate',{method:'POST'}).then(()=>loadInvoices());}
-function sendSri(id){api('/api/billing/invoices/'+id+'/sri',{method:'POST'}).then(()=>loadInvoices());}
-function pdfInv(id){window.open('/api/billing/invoices/'+id+'/pdf','_blank');}
+
+async function validateInv(id) {
+  const res = await api(`/api/billing/invoices/${id}/validate`,{method:'POST'});
+  if (res?.ok) loadInvoices();
+  else { const d = await res?.json(); alert(d?.error || 'Error al validar'); }
+}
+async function postInv(id) {
+  const res = await api(`/api/billing/invoices/${id}/post`,{method:'POST'});
+  if (res?.ok) loadInvoices();
+  else { const d = await res?.json(); alert(d?.error || 'Error al contabilizar'); }
+}
+async function sendSri(id) {
+  const res = await api(`/api/billing/invoices/${id}/sri`,{method:'POST'});
+  const d = await res?.json();
+  if (res?.ok) { loadInvoices(); alert('Enviada al SRI: ' + (d.estado || 'procesando')); }
+  else alert(d?.error || 'Error al enviar al SRI');
+}
+function pdfInv(id) { window.open('/api/billing/invoices/'+id+'/pdf','_blank'); }
+async function cancelInv(id) {
+  if (!confirm('Anular esta factura?')) return;
+  const res = await api(`/api/billing/invoices/${id}/cancel`,{method:'POST'});
+  if (res?.ok) loadInvoices();
+}
+
+async function viewInvoice(id) {
+  const res = await api(`/api/billing/invoices/${id}`);
+  if (!res?.ok) return;
+  const inv = await res.json();
+  document.getElementById('invDetailTitle').textContent = `Factura ${inv.invoice_number || '(borrador)'}`;
+  const lines = inv.lines || [];
+  document.getElementById('invDetailBody').innerHTML = `
+    <div class="grid grid-cols-2 gap-2 text-sm mb-4">
+      <div><span class="text-slate-400">Paciente:</span> ${inv.patient_name||'-'}</div>
+      <div><span class="text-slate-400">Documento:</span> ${inv.patient_document||'-'}</div>
+      <div><span class="text-slate-400">Estado:</span> <span class="px-2 py-0.5 rounded text-xs ${invStatusColor(inv.status)}">${invStatusLabel(inv.status)}</span></div>
+      <div><span class="text-slate-400">Fecha:</span> ${inv.created_at ? new Date(inv.created_at).toLocaleString('es-EC') : '-'}</div>
+    </div>
+    <table class="w-full text-sm mb-4">
+      <thead><tr class="text-slate-400 border-b border-slate-700"><th class="pb-2 text-left">Servicio</th><th class="pb-2">Cant.</th><th class="pb-2 text-right">P.Unit</th><th class="pb-2 text-right">Total</th></tr></thead>
+      <tbody>${lines.map(l => `<tr class="border-b border-slate-800">
+        <td class="py-2">${l.description||'-'}</td>
+        <td class="py-2 text-center">${l.quantity||1}</td>
+        <td class="py-2 text-right">$${(l.unit_price||0).toFixed(2)}</td>
+        <td class="py-2 text-right">$${(l.line_total||0).toFixed(2)}</td>
+      </tr>`).join('')}</tbody>
+    </table>
+    <div class="text-right space-y-1 text-sm">
+      <div>Subtotal 0%: $${(inv.subtotal_0||inv.subtotal||0).toFixed(2)}</div>
+      <div>IVA: $${(inv.tax_amount||0).toFixed(2)}</div>
+      <div class="text-lg font-bold">Total: $${(inv.total||0).toFixed(2)}</div>
+    </div>`;
+  document.getElementById('invDetailModal').classList.remove('hidden');
+  document.getElementById('invDetailModal').classList.add('flex');
+}
+function closeInvDetail() {
+  document.getElementById('invDetailModal').classList.add('hidden');
+  document.getElementById('invDetailModal').classList.remove('flex');
+}
+
+// ===== New Invoice =====
+function showNewInvoice() {
+  invLines = [];
+  invPatient = null;
+  document.getElementById('nif_patSearch').value = '';
+  document.getElementById('nif_patResults').innerHTML = '';
+  document.getElementById('nif_patSelected').classList.add('hidden');
+  document.getElementById('nif_error').classList.add('hidden');
+  renderInvLines();
+  document.getElementById('invModal').classList.remove('hidden');
+  document.getElementById('invModal').classList.add('flex');
+  loadInvCatalog();
+}
+function closeInvModal() {
+  document.getElementById('invModal').classList.add('hidden');
+  document.getElementById('invModal').classList.remove('flex');
+}
+
+async function loadInvCatalog() {
+  if (invCatalog.length) { renderInvCatalog(invCatalog); return; }
+  const res = await api('/api/billing/catalog');
+  if (!res?.ok) return;
+  const d = await res.json();
+  invCatalog = d.items || [];
+  renderInvCatalog(invCatalog);
+}
+function renderInvCatalog(items) {
+  const esc = s => s.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+  document.getElementById('nif_catalog').innerHTML = items.map(c => `
+    <div class="flex justify-between items-center bg-slate-800/50 rounded px-2 py-1 cursor-pointer hover:bg-slate-800 text-xs"
+         onclick="addInvLine(${c.id},'${esc(c.name)}',${c.price})">
+      <span>${c.code} — ${c.name}</span><span class="text-green-400">$${c.price.toFixed(2)}</span>
+    </div>`).join('');
+}
+function filterInvCatalog() {
+  const q = document.getElementById('nif_svcSearch').value.toLowerCase();
+  renderInvCatalog(invCatalog.filter(c => c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q)));
+}
+
+function addInvLine(id, name, price) {
+  if (invLines.find(l => l.catalog_id === id)) return;
+  invLines.push({catalog_id: id, description: name, quantity: 1, unit_price: price});
+  renderInvLines();
+}
+function removeInvLine(idx) { invLines.splice(idx, 1); renderInvLines(); }
+function renderInvLines() {
+  const div = document.getElementById('nif_lines');
+  div.innerHTML = invLines.map((l, i) => `
+    <div class="flex justify-between items-center text-sm py-1">
+      <span>${l.description}</span>
+      <div class="flex items-center gap-2">
+        <span class="text-green-400">$${l.unit_price.toFixed(2)}</span>
+        <button onclick="removeInvLine(${i})" class="text-red-400 text-xs">✕</button>
+      </div>
+    </div>`).join('');
+  const total = invLines.reduce((s, l) => s + l.unit_price * l.quantity, 0);
+  document.getElementById('nif_total').textContent = '$' + total.toFixed(2);
+}
+
+async function searchInvPatient() {
+  const q = document.getElementById('nif_patSearch').value.trim();
+  if (!q) return;
+  const res = await api('/api/patients?q=' + encodeURIComponent(q));
+  if (!res?.ok) return;
+  const data = await res.json();
+  const div = document.getElementById('nif_patResults');
+  if (!data.patients?.length) { div.innerHTML = '<p class="text-slate-500 text-xs">No encontrado</p>'; return; }
+  div.innerHTML = data.patients.slice(0, 5).map(p => `
+    <div class="bg-slate-800/50 rounded px-2 py-1 cursor-pointer hover:bg-slate-700 text-xs mb-1"
+         onclick='selectInvPatient(${JSON.stringify(p)})'>
+      <span class="text-blue-400">${p.document_id}</span> — ${p.full_name}
+    </div>`).join('');
+}
+function selectInvPatient(p) {
+  invPatient = p;
+  document.getElementById('nif_patResults').innerHTML = '';
+  const div = document.getElementById('nif_patSelected');
+  div.innerHTML = `<span class="text-blue-400">${p.document_id}</span> — ${p.full_name}`;
+  div.classList.remove('hidden');
+}
+
+async function submitNewInvoice() {
+  const errDiv = document.getElementById('nif_error');
+  errDiv.classList.add('hidden');
+  if (!invPatient) { errDiv.textContent = 'Seleccione un paciente'; errDiv.classList.remove('hidden'); return; }
+  if (!invLines.length) { errDiv.textContent = 'Agregue al menos un servicio'; errDiv.classList.remove('hidden'); return; }
+
+  const body = {
+    patient_document: invPatient.document_id,
+    patient_name: invPatient.full_name,
+    patient_email: invPatient.email || '',
+    patient_phone: invPatient.phone || '',
+    patient_address: invPatient.address || '',
+    lines: invLines
+  };
+  const res = await api('/api/billing/invoices', {method:'POST', body: JSON.stringify(body)});
+  if (!res) return;
+  const data = await res.json();
+  if (!res.ok) { errDiv.textContent = data.error || 'Error'; errDiv.classList.remove('hidden'); return; }
+  closeInvModal();
+  loadInvoices();
+}
+
 loadInvoices();
 </script>
 {% endblock %}

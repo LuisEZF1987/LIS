@@ -13,7 +13,7 @@
           class="bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm flex-1 focus:outline-none focus:border-blue-500"
           onkeyup="if(event.key==='Enter')searchPatient()">
         <button onclick="searchPatient()" class="bg-blue-600 hover:bg-blue-500 text-white text-sm px-4 py-1.5 rounded-lg">Buscar</button>
-        <button onclick="newPatient()" class="bg-slate-700 hover:bg-slate-600 text-white text-sm px-4 py-1.5 rounded-lg">Nuevo</button>
+        <button onclick="showQuickPatient()" class="bg-slate-700 hover:bg-slate-600 text-white text-sm px-4 py-1.5 rounded-lg">Nuevo</button>
       </div>
       <div id="patResult" class="mt-3 hidden"></div>
     </div>
@@ -32,12 +32,16 @@
   <div>
     <div class="card sticky top-6">
       <h3 class="text-sm font-medium text-slate-300 mb-3">Resumen de Orden</h3>
+      <div id="selectedPatient" class="mb-3 p-2 bg-slate-800/50 rounded text-sm hidden">
+        <span class="text-slate-400">Paciente:</span> <span id="spName" class="text-white"></span>
+        <br><span class="text-slate-400">Doc:</span> <span id="spDoc" class="text-blue-400"></span>
+      </div>
       <div id="orderItems" class="space-y-2 mb-4 text-sm">
         <p class="text-slate-500">Seleccione pruebas del catalogo</p>
       </div>
       <div class="border-t border-slate-700 pt-3 space-y-1 text-sm">
         <div class="flex justify-between"><span class="text-slate-400">Subtotal</span><span id="orderSubtotal">$0.00</span></div>
-        <div class="flex justify-between"><span class="text-slate-400">IVA</span><span id="orderIva">$0.00</span></div>
+        <div class="flex justify-between"><span class="text-slate-400">IVA (0%)</span><span id="orderIva">$0.00</span></div>
         <div class="flex justify-between font-bold text-lg"><span>Total</span><span id="orderTotal">$0.00</span></div>
       </div>
       <div class="mt-4 space-y-2">
@@ -47,11 +51,60 @@
           <option value="tarjeta_credito">Tarjeta Credito</option>
           <option value="transferencia">Transferencia</option>
         </select>
-        <button onclick="createOrder()" class="w-full bg-green-600 hover:bg-green-500 text-white font-medium rounded-lg py-2 transition-colors">
+        <button onclick="createOrder()" id="btnCobrar" disabled
+          class="w-full bg-green-600 hover:bg-green-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-medium rounded-lg py-2 transition-colors">
           Cobrar y Facturar
         </button>
       </div>
+      <div id="orderError" class="text-red-400 text-sm mt-2 hidden"></div>
+      <div id="orderSuccess" class="text-green-400 text-sm mt-2 hidden"></div>
     </div>
+  </div>
+</div>
+
+<!-- Quick Patient Modal -->
+<div id="qpModal" class="fixed inset-0 bg-black/60 z-50 hidden items-center justify-center" onclick="if(event.target===this)closeQpModal()">
+  <div class="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-md mx-4">
+    <div class="flex justify-between items-center p-4 border-b border-slate-700">
+      <h3 class="font-medium">Registro Rapido de Paciente</h3>
+      <button onclick="closeQpModal()" class="text-slate-400 hover:text-white text-lg">&times;</button>
+    </div>
+    <form onsubmit="saveQuickPatient(event)" class="p-4 space-y-3">
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs text-slate-400">Tipo Doc.</label>
+          <select id="qp_document_type" required class="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm">
+            <option value="cedula">Cedula</option><option value="ruc">RUC</option><option value="pasaporte">Pasaporte</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-xs text-slate-400">Numero *</label>
+          <input id="qp_document_id" required class="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm">
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs text-slate-400">Nombres *</label>
+          <input id="qp_first_name" required class="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm">
+        </div>
+        <div>
+          <label class="text-xs text-slate-400">Apellidos *</label>
+          <input id="qp_last_name" required class="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm">
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs text-slate-400">Telefono</label>
+          <input id="qp_phone" class="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm">
+        </div>
+        <div>
+          <label class="text-xs text-slate-400">Email</label>
+          <input id="qp_email" type="email" class="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm">
+        </div>
+      </div>
+      <div id="qpError" class="text-red-400 text-sm hidden"></div>
+      <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg py-2">Registrar y Seleccionar</button>
+    </form>
   </div>
 </div>
 {% endblock %}
@@ -71,9 +124,10 @@ async function loadCatalog() {
 }
 
 function renderCatalog(items) {
+  const esc = s => s.replace(/'/g, "\\'").replace(/"/g, '&quot;');
   document.getElementById('catalogList').innerHTML = items.map(c => `
-    <div class="flex justify-between items-center bg-slate-800/50 rounded px-3 py-2 cursor-pointer hover:bg-slate-800"
-         onclick="addToOrder(${c.id}, '${c.code}', '${c.name.replace(/'/g,"\\'")}', ${c.price})">
+    <div class="flex justify-between items-center bg-slate-800/50 rounded px-3 py-2 cursor-pointer hover:bg-slate-800 transition-colors"
+         onclick="addToOrder(${c.id}, '${esc(c.code)}', '${esc(c.name)}', ${c.price})">
       <div><span class="text-slate-400 text-xs">${c.code}</span> <span class="text-sm">${c.name}</span></div>
       <span class="text-green-400 text-sm font-medium">$${c.price.toFixed(2)}</span>
     </div>
@@ -98,25 +152,158 @@ function removeFromOrder(id) {
 
 function renderOrder() {
   const div = document.getElementById('orderItems');
-  if (!orderLines.length) { div.innerHTML = '<p class="text-slate-500">Seleccione pruebas del catalogo</p>'; }
-  else { div.innerHTML = orderLines.map(l => `
-    <div class="flex justify-between items-center">
-      <span>${l.name}</span>
-      <div class="flex items-center gap-2">
-        <span class="text-green-400">$${l.price.toFixed(2)}</span>
-        <button onclick="removeFromOrder(${l.id})" class="text-red-400 hover:text-red-300 text-xs">x</button>
+  if (!orderLines.length) {
+    div.innerHTML = '<p class="text-slate-500">Seleccione pruebas del catalogo</p>';
+  } else {
+    div.innerHTML = orderLines.map(l => `
+      <div class="flex justify-between items-center py-1">
+        <span class="text-sm">${l.name}</span>
+        <div class="flex items-center gap-2">
+          <span class="text-green-400">$${l.price.toFixed(2)}</span>
+          <button onclick="removeFromOrder(${l.id})" class="text-red-400 hover:text-red-300 text-xs">✕</button>
+        </div>
       </div>
-    </div>
-  `).join(''); }
+    `).join('');
+  }
   const sub = orderLines.reduce((s,l) => s + l.price * l.qty, 0);
   document.getElementById('orderSubtotal').textContent = '$' + sub.toFixed(2);
   document.getElementById('orderIva').textContent = '$0.00';
   document.getElementById('orderTotal').textContent = '$' + sub.toFixed(2);
+  document.getElementById('btnCobrar').disabled = !orderLines.length || !selectedPatient;
 }
 
-function searchPatient() { alert('Busqueda de paciente — pendiente de integracion'); }
-function newPatient() { alert('Registro de paciente — pendiente de integracion'); }
-function createOrder() { alert('Crear orden y factura — pendiente de integracion'); }
+async function searchPatient() {
+  const q = document.getElementById('patSearch').value.trim();
+  if (!q) return;
+  const res = await api('/api/patients?q=' + encodeURIComponent(q));
+  if (!res?.ok) return;
+  const data = await res.json();
+  const div = document.getElementById('patResult');
+  div.classList.remove('hidden');
+
+  if (!data.patients?.length) {
+    div.innerHTML = '<p class="text-slate-500 text-sm">No se encontro paciente. <button onclick="showQuickPatient()" class="text-blue-400 underline">Registrar nuevo</button></p>';
+    return;
+  }
+
+  div.innerHTML = data.patients.slice(0, 5).map(p => `
+    <div class="flex justify-between items-center bg-slate-800/50 rounded px-3 py-2 cursor-pointer hover:bg-slate-700 transition-colors mb-1"
+         onclick='selectPatient(${JSON.stringify(p)})'>
+      <div><span class="text-blue-400 text-sm">${p.document_id}</span> — <span class="text-sm">${p.full_name}</span></div>
+      <span class="text-xs text-slate-400">${p.phone||''}</span>
+    </div>
+  `).join('');
+}
+
+function selectPatient(p) {
+  selectedPatient = p;
+  document.getElementById('patResult').classList.add('hidden');
+  document.getElementById('patSearch').value = p.full_name;
+  const sp = document.getElementById('selectedPatient');
+  sp.classList.remove('hidden');
+  document.getElementById('spName').textContent = p.full_name;
+  document.getElementById('spDoc').textContent = p.document_id;
+  renderOrder();
+}
+
+function showQuickPatient() {
+  document.getElementById('qpModal').classList.remove('hidden');
+  document.getElementById('qpModal').classList.add('flex');
+  document.getElementById('qpError').classList.add('hidden');
+}
+function closeQpModal() {
+  document.getElementById('qpModal').classList.add('hidden');
+  document.getElementById('qpModal').classList.remove('flex');
+}
+
+async function saveQuickPatient(e) {
+  e.preventDefault();
+  const body = {
+    document_type: document.getElementById('qp_document_type').value,
+    document_id: document.getElementById('qp_document_id').value.trim(),
+    first_name: document.getElementById('qp_first_name').value.trim(),
+    last_name: document.getElementById('qp_last_name').value.trim(),
+    phone: document.getElementById('qp_phone').value.trim() || undefined,
+    email: document.getElementById('qp_email').value.trim() || undefined,
+  };
+  const res = await api('/api/patients', {method:'POST', body: JSON.stringify(body)});
+  if (!res) return;
+  const data = await res.json();
+  if (!res.ok) {
+    document.getElementById('qpError').textContent = data.error || 'Error';
+    document.getElementById('qpError').classList.remove('hidden');
+    return;
+  }
+  closeQpModal();
+  selectPatient(data.patient);
+}
+
+async function createOrder() {
+  if (!selectedPatient || !orderLines.length) return;
+  const errDiv = document.getElementById('orderError');
+  const sucDiv = document.getElementById('orderSuccess');
+  errDiv.classList.add('hidden');
+  sucDiv.classList.add('hidden');
+
+  // 1. Create invoice
+  const invBody = {
+    patient_document: selectedPatient.document_id,
+    patient_name: selectedPatient.full_name,
+    patient_email: selectedPatient.email || '',
+    patient_phone: selectedPatient.phone || '',
+    patient_address: selectedPatient.address || '',
+    lines: orderLines.map(l => ({
+      catalog_id: l.id,
+      description: l.name,
+      quantity: l.qty,
+      unit_price: l.price
+    }))
+  };
+
+  const res1 = await api('/api/billing/invoices', {method:'POST', body: JSON.stringify(invBody)});
+  if (!res1) return;
+  const inv = await res1.json();
+  if (!res1.ok) { errDiv.textContent = inv.error || 'Error al crear factura'; errDiv.classList.remove('hidden'); return; }
+
+  // 2. Validate invoice
+  const res2 = await api(`/api/billing/invoices/${inv.id}/validate`, {method:'POST'});
+  if (!res2?.ok) { errDiv.textContent = 'Error al validar factura'; errDiv.classList.remove('hidden'); return; }
+
+  // 3. Post invoice
+  const res3 = await api(`/api/billing/invoices/${inv.id}/post`, {method:'POST'});
+  if (!res3?.ok) { errDiv.textContent = 'Error al contabilizar'; errDiv.classList.remove('hidden'); return; }
+
+  // 4. Apply payment
+  const total = orderLines.reduce((s,l) => s + l.price * l.qty, 0);
+  const payBody = {
+    invoice_id: inv.id,
+    amount: total,
+    payment_source: document.getElementById('payMethod').value
+  };
+  const res4 = await api('/api/billing/payments/apply', {method:'POST', body: JSON.stringify(payBody)});
+  if (!res4?.ok) { errDiv.textContent = 'Error al aplicar pago'; errDiv.classList.remove('hidden'); return; }
+
+  // 5. Create lab sample
+  const sampleBody = {
+    patient_document: selectedPatient.document_id,
+    patient_name: selectedPatient.full_name,
+    sample_type: 'blood',
+    analyte_ids: orderLines.map(l => l.id),
+    notes: `Factura ${inv.invoice_number || inv.id}`
+  };
+  await api('/api/lis/samples', {method:'POST', body: JSON.stringify(sampleBody)});
+
+  const valData = await res2.json();
+  sucDiv.innerHTML = `Factura <strong>${valData.invoice_number || ''}</strong> creada y pagada. Muestra enviada a laboratorio.`;
+  sucDiv.classList.remove('hidden');
+
+  // Reset
+  orderLines = [];
+  selectedPatient = null;
+  document.getElementById('selectedPatient').classList.add('hidden');
+  document.getElementById('patSearch').value = '';
+  renderOrder();
+}
 
 loadCatalog();
 </script>

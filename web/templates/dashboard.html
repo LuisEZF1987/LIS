@@ -4,13 +4,17 @@
 <h2 class="text-xl font-semibold mb-6">Dashboard</h2>
 
 <!-- KPI Cards -->
-<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+  <div class="card">
+    <p class="text-slate-400 text-xs uppercase tracking-wide">Pacientes</p>
+    <p class="text-2xl font-bold text-white mt-1" id="kpiPatients">-</p>
+  </div>
   <div class="card">
     <p class="text-slate-400 text-xs uppercase tracking-wide">Muestras Hoy</p>
     <p class="text-2xl font-bold text-white mt-1" id="kpiSamples">-</p>
   </div>
   <div class="card">
-    <p class="text-slate-400 text-xs uppercase tracking-wide">Pendientes Validacion</p>
+    <p class="text-slate-400 text-xs uppercase tracking-wide">Pendientes</p>
     <p class="text-2xl font-bold text-yellow-400 mt-1" id="kpiPending">-</p>
   </div>
   <div class="card">
@@ -18,16 +22,34 @@
     <p class="text-2xl font-bold text-green-400 mt-1" id="kpiSales">-</p>
   </div>
   <div class="card">
-    <p class="text-slate-400 text-xs uppercase tracking-wide">CxC Pendiente</p>
-    <p class="text-2xl font-bold text-red-400 mt-1" id="kpiCxC">-</p>
+    <p class="text-slate-400 text-xs uppercase tracking-wide">Criticos Hoy</p>
+    <p class="text-2xl font-bold text-red-400 mt-1" id="kpiCritical">-</p>
+  </div>
+</div>
+
+<!-- Status breakdown -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+  <div class="card lg:col-span-2">
+    <h3 class="text-sm font-medium text-slate-300 mb-3">Muestras de Hoy por Estado</h3>
+    <div id="samplesByStatus" class="flex gap-3 flex-wrap">
+      <p class="text-slate-500 text-sm">Cargando...</p>
+    </div>
+  </div>
+  <div class="card">
+    <h3 class="text-sm font-medium text-slate-300 mb-3">Accesos Rapidos</h3>
+    <div class="space-y-2">
+      <a href="/app/caja" class="block bg-blue-600/20 text-blue-400 rounded-lg px-3 py-2 text-sm hover:bg-blue-600/30 transition">+ Nueva Orden en Caja</a>
+      <a href="/app/laboratorio" class="block bg-green-600/20 text-green-400 rounded-lg px-3 py-2 text-sm hover:bg-green-600/30 transition">Ver Worklist</a>
+      <a href="/app/facturacion" class="block bg-yellow-600/20 text-yellow-400 rounded-lg px-3 py-2 text-sm hover:bg-yellow-600/30 transition">Facturas Pendientes</a>
+    </div>
   </div>
 </div>
 
 <!-- Recent Activity -->
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
   <div class="card">
-    <h3 class="text-sm font-medium text-slate-300 mb-3">Ultimas Muestras</h3>
-    <div id="recentSamples" class="space-y-2 text-sm">
+    <h3 class="text-sm font-medium text-slate-300 mb-3">Validaciones Pendientes</h3>
+    <div id="pendingList" class="space-y-2 text-sm">
       <p class="text-slate-500">Cargando...</p>
     </div>
   </div>
@@ -42,22 +64,82 @@
 
 {% block scripts %}
 <script>
+const statusLabels = {collected:'Recolectada',received:'Recibida',in_process:'En Proceso',completed:'Completada',rejected:'Rechazada'};
+const statusColors = {collected:'bg-slate-700 text-slate-300',received:'bg-blue-900 text-blue-300',in_process:'bg-yellow-900 text-yellow-300',completed:'bg-green-900 text-green-300',rejected:'bg-red-900 text-red-300'};
+
 async function loadDashboard() {
-  try {
-    const [samplesRes, salesRes] = await Promise.allSettled([
-      api('/api/lis/stats'),
-      api('/api/billing/reports/daily-sales')
-    ]);
-    if (samplesRes.status === 'fulfilled' && samplesRes.value?.ok) {
-      const d = await samplesRes.value.json();
-      document.getElementById('kpiSamples').textContent = d.samples_today ?? '-';
-      document.getElementById('kpiPending').textContent = d.pending_validation ?? '-';
+  const [kpiRes, salesRes, pendRes, invRes] = await Promise.allSettled([
+    api('/api/dashboard/kpis'),
+    api('/api/billing/reports/daily-sales'),
+    api('/api/lis/pending-validation'),
+    api('/api/billing/invoices?limit=5')
+  ]);
+
+  // KPIs
+  if (kpiRes.status === 'fulfilled' && kpiRes.value?.ok) {
+    const d = await kpiRes.value.json();
+    document.getElementById('kpiPatients').textContent = d.total_patients ?? '-';
+    document.getElementById('kpiSamples').textContent = d.samples_today ?? 0;
+    document.getElementById('kpiPending').textContent = d.pending_results ?? 0;
+    document.getElementById('kpiCritical').textContent = d.critical_today ?? 0;
+
+    // Samples by status
+    const sbs = d.samples_by_status || {};
+    const div = document.getElementById('samplesByStatus');
+    if (Object.keys(sbs).length) {
+      div.innerHTML = Object.entries(sbs).map(([s, c]) =>
+        `<div class="px-3 py-2 rounded-lg ${statusColors[s]||'bg-slate-700 text-slate-300'}">
+          <span class="text-lg font-bold">${c}</span>
+          <span class="text-xs ml-1">${statusLabels[s]||s}</span>
+        </div>`
+      ).join('');
+    } else {
+      div.innerHTML = '<p class="text-slate-500 text-sm">Sin muestras hoy</p>';
     }
-    if (salesRes.status === 'fulfilled' && salesRes.value?.ok) {
-      const d = await salesRes.value.json();
-      document.getElementById('kpiSales').textContent = '$' + (d.total_today ?? 0).toFixed(2);
+  }
+
+  // Sales
+  if (salesRes.status === 'fulfilled' && salesRes.value?.ok) {
+    const d = await salesRes.value.json();
+    document.getElementById('kpiSales').textContent = '$' + (d.total_today ?? d.total ?? 0).toFixed(2);
+  }
+
+  // Pending validations
+  if (pendRes.status === 'fulfilled' && pendRes.value?.ok) {
+    const d = await pendRes.value.json();
+    const items = d.results || d.items || [];
+    const div = document.getElementById('pendingList');
+    if (items.length) {
+      div.innerHTML = items.slice(0, 8).map(r =>
+        `<div class="flex justify-between items-center py-1 border-b border-slate-800">
+          <div><span class="text-blue-400">${r.analyte_name||r.analyte||'-'}</span> <span class="text-slate-500">— ${r.patient_name||'-'}</span></div>
+          <span class="text-xs px-2 py-0.5 rounded ${r.flag && r.flag.includes('critical') ? 'bg-red-900 text-red-300' : 'bg-yellow-900 text-yellow-300'}">${r.value||'-'} ${r.unit||''}</span>
+        </div>`
+      ).join('');
+    } else {
+      div.innerHTML = '<p class="text-green-400">Sin resultados pendientes</p>';
     }
-  } catch(e) { console.error('Dashboard load error', e); }
+  }
+
+  // Recent invoices
+  if (invRes.status === 'fulfilled' && invRes.value?.ok) {
+    const d = await invRes.value.json();
+    const inv = d.invoices || [];
+    const div = document.getElementById('recentInvoices');
+    if (inv.length) {
+      div.innerHTML = inv.slice(0, 5).map(i =>
+        `<div class="flex justify-between items-center py-1 border-b border-slate-800">
+          <div><span class="text-blue-400">${i.invoice_number||'(borrador)'}</span> <span class="text-slate-500">— ${i.patient_name||'-'}</span></div>
+          <div class="flex items-center gap-2">
+            <span class="text-green-400 font-medium">$${(i.total||0).toFixed(2)}</span>
+            <span class="text-xs px-2 py-0.5 rounded ${i.status==='paid'?'bg-green-900 text-green-300':i.status==='posted'?'bg-blue-900 text-blue-300':'bg-slate-700 text-slate-300'}">${{draft:'Borrador',validated:'Validada',posted:'Contabilizada',paid:'Pagada',cancelled:'Anulada'}[i.status]||i.status}</span>
+          </div>
+        </div>`
+      ).join('');
+    } else {
+      div.innerHTML = '<p class="text-slate-500">Sin facturas</p>';
+    }
+  }
 }
 loadDashboard();
 </script>

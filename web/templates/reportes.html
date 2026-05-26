@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Reportes — Dimed-LIS{% endblock %}
 {% block content %}
-<h2 class="text-xl font-semibold mb-6">Reportes Financieros</h2>
+<h2 class="text-xl font-semibold mb-6">Reportes</h2>
 
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
   <div class="card hover:border-blue-500/50 cursor-pointer transition-colors" onclick="openReport('daily-sales')">
@@ -16,24 +16,24 @@
     <h3 class="text-sm font-medium text-blue-400 mb-1">Cuentas por Cobrar</h3>
     <p class="text-xs text-slate-400">Saldos pendientes con envejecimiento de cartera</p>
   </div>
-  <div class="card hover:border-blue-500/50 cursor-pointer transition-colors" onclick="openReport('trial-balance')">
-    <h3 class="text-sm font-medium text-blue-400 mb-1">Balance de Comprobacion</h3>
-    <p class="text-xs text-slate-400">Saldos de cuentas contables del periodo</p>
+  <div class="card hover:border-blue-500/50 cursor-pointer transition-colors" onclick="openReport('cxc-detail')">
+    <h3 class="text-sm font-medium text-blue-400 mb-1">Detalle CxC</h3>
+    <p class="text-xs text-slate-400">Facturas individuales pendientes de cobro</p>
   </div>
-  <div class="card hover:border-blue-500/50 cursor-pointer transition-colors" onclick="openReport('income-statement')">
-    <h3 class="text-sm font-medium text-blue-400 mb-1">Estado de Resultados</h3>
-    <p class="text-xs text-slate-400">Ingresos, gastos y utilidad del periodo</p>
+  <div class="card hover:border-blue-500/50 cursor-pointer transition-colors" onclick="openReport('invoices-paid')">
+    <h3 class="text-sm font-medium text-blue-400 mb-1">Facturas Pagadas</h3>
+    <p class="text-xs text-slate-400">Historico de facturas cobradas con detalle de pago</p>
   </div>
-  <div class="card hover:border-blue-500/50 cursor-pointer transition-colors" onclick="openReport('sri-comprobantes')">
-    <h3 class="text-sm font-medium text-blue-400 mb-1">Comprobantes SRI</h3>
-    <p class="text-xs text-slate-400">Estado de comprobantes electronicos enviados al SRI</p>
+  <div class="card hover:border-blue-500/50 cursor-pointer transition-colors" onclick="openReport('lab-stats')">
+    <h3 class="text-sm font-medium text-blue-400 mb-1">Estadisticas Laboratorio</h3>
+    <p class="text-xs text-slate-400">Muestras, resultados y tiempos de respuesta</p>
   </div>
 </div>
 
 <div id="reportContent" class="card mt-6 hidden">
   <div class="flex justify-between items-center mb-4">
     <h3 id="reportTitle" class="text-sm font-medium text-slate-300"></h3>
-    <button onclick="document.getElementById('reportContent').classList.add('hidden')" class="text-slate-400 hover:text-white text-sm">Cerrar</button>
+    <button onclick="document.getElementById('reportContent').classList.add('hidden')" class="text-slate-400 hover:text-white text-sm">Cerrar ✕</button>
   </div>
   <div id="reportBody" class="text-sm"></div>
 </div>
@@ -41,29 +41,161 @@
 
 {% block scripts %}
 <script>
+const reportTitles = {
+  'daily-sales': 'Ventas Diarias',
+  'revenue-by-category': 'Ingresos por Categoria',
+  'cxc': 'Resumen Cuentas por Cobrar',
+  'cxc-detail': 'Detalle Cuentas por Cobrar',
+  'invoices-paid': 'Facturas Pagadas',
+  'lab-stats': 'Estadisticas de Laboratorio'
+};
+
 async function openReport(type) {
-  const titles = {
-    'daily-sales': 'Ventas Diarias',
-    'revenue-by-category': 'Ingresos por Categoria',
-    'cxc': 'Cuentas por Cobrar',
-    'trial-balance': 'Balance de Comprobacion',
-    'income-statement': 'Estado de Resultados',
-    'sri-comprobantes': 'Comprobantes SRI'
-  };
-  document.getElementById('reportTitle').textContent = titles[type] || type;
+  document.getElementById('reportTitle').textContent = reportTitles[type] || type;
   document.getElementById('reportBody').innerHTML = '<p class="text-slate-500">Cargando...</p>';
   document.getElementById('reportContent').classList.remove('hidden');
 
-  let url;
-  if (type === 'cxc') url = '/api/billing/cxc/summary';
-  else if (type === 'daily-sales') url = '/api/billing/reports/daily-sales';
-  else if (type === 'revenue-by-category') url = '/api/billing/reports/revenue-by-category';
-  else { document.getElementById('reportBody').innerHTML = '<p class="text-slate-400">Reporte pendiente de implementacion</p>'; return; }
+  try {
+    if (type === 'daily-sales') await renderDailySales();
+    else if (type === 'revenue-by-category') await renderRevenueByCategory();
+    else if (type === 'cxc') await renderCxcSummary();
+    else if (type === 'cxc-detail') await renderCxcDetail();
+    else if (type === 'invoices-paid') await renderInvoicesPaid();
+    else if (type === 'lab-stats') await renderLabStats();
+  } catch(e) {
+    document.getElementById('reportBody').innerHTML = '<p class="text-red-400">Error al cargar reporte</p>';
+    console.error(e);
+  }
+}
 
-  const res = await api(url);
-  if (!res?.ok) { document.getElementById('reportBody').innerHTML = '<p class="text-red-400">Error al cargar</p>'; return; }
-  const data = await res.json();
-  document.getElementById('reportBody').innerHTML = '<pre class="text-xs text-slate-300 overflow-x-auto">' + JSON.stringify(data, null, 2) + '</pre>';
+async function renderDailySales() {
+  const res = await api('/api/billing/reports/daily-sales');
+  if (!res?.ok) throw new Error();
+  const d = await res.json();
+  const body = document.getElementById('reportBody');
+
+  const total = d.total_today ?? d.total ?? 0;
+  const items = d.items || d.sales || [];
+
+  let html = `<div class="mb-4 p-3 bg-green-900/30 rounded-lg">
+    <span class="text-slate-400">Total del dia:</span> <span class="text-2xl font-bold text-green-400">$${total.toFixed(2)}</span>
+  </div>`;
+
+  if (items.length) {
+    html += `<table class="w-full"><thead><tr class="text-slate-400 border-b border-slate-700 text-xs">
+      <th class="pb-2 text-left">Factura</th><th class="pb-2 text-left">Paciente</th><th class="pb-2 text-right">Total</th><th class="pb-2">Pago</th>
+    </tr></thead><tbody>`;
+    items.forEach(i => {
+      html += `<tr class="border-b border-slate-800"><td class="py-1 text-blue-400">${i.invoice_number||i.id||'-'}</td>
+        <td class="py-1">${i.patient_name||'-'}</td>
+        <td class="py-1 text-right text-green-400">$${(i.total||0).toFixed(2)}</td>
+        <td class="py-1 text-slate-400 text-center">${i.payment_source||'-'}</td></tr>`;
+    });
+    html += '</tbody></table>';
+  } else {
+    html += '<p class="text-slate-500">Sin ventas registradas hoy</p>';
+  }
+  body.innerHTML = html;
+}
+
+async function renderRevenueByCategory() {
+  const res = await api('/api/billing/reports/revenue-by-category');
+  if (!res?.ok) throw new Error();
+  const d = await res.json();
+  const items = d.categories || d.items || [];
+  const body = document.getElementById('reportBody');
+
+  if (!items.length) { body.innerHTML = '<p class="text-slate-500">Sin datos</p>'; return; }
+
+  const maxVal = Math.max(...items.map(i => i.total || i.revenue || 0));
+  body.innerHTML = items.map(c => {
+    const val = c.total || c.revenue || 0;
+    const pct = maxVal > 0 ? (val / maxVal * 100) : 0;
+    return `<div class="mb-3">
+      <div class="flex justify-between text-sm mb-1">
+        <span>${c.category || c.name || '-'}</span>
+        <span class="text-green-400 font-medium">$${val.toFixed(2)} <span class="text-slate-500 text-xs">(${c.count || 0})</span></span>
+      </div>
+      <div class="w-full bg-slate-800 rounded-full h-2"><div class="bg-blue-500 h-2 rounded-full" style="width:${pct}%"></div></div>
+    </div>`;
+  }).join('');
+}
+
+async function renderCxcSummary() {
+  const res = await api('/api/billing/cxc/summary');
+  if (!res?.ok) throw new Error();
+  const d = await res.json();
+  const body = document.getElementById('reportBody');
+
+  body.innerHTML = `
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+      <div class="bg-slate-800/50 rounded-lg p-3"><p class="text-xs text-slate-400">Total Pendiente</p><p class="text-xl font-bold text-red-400">$${(d.total_pending || d.total || 0).toFixed(2)}</p></div>
+      <div class="bg-slate-800/50 rounded-lg p-3"><p class="text-xs text-slate-400">0-30 dias</p><p class="text-lg font-bold text-yellow-400">$${(d.aging_0_30 || 0).toFixed(2)}</p></div>
+      <div class="bg-slate-800/50 rounded-lg p-3"><p class="text-xs text-slate-400">31-60 dias</p><p class="text-lg font-bold text-orange-400">$${(d.aging_31_60 || 0).toFixed(2)}</p></div>
+      <div class="bg-slate-800/50 rounded-lg p-3"><p class="text-xs text-slate-400">60+ dias</p><p class="text-lg font-bold text-red-400">$${(d.aging_61_plus || d.aging_61_90 || 0).toFixed(2)}</p></div>
+    </div>
+    <p class="text-slate-400 text-xs">${d.count || 0} facturas pendientes de cobro</p>`;
+}
+
+async function renderCxcDetail() {
+  const res = await api('/api/billing/cxc');
+  if (!res?.ok) throw new Error();
+  const d = await res.json();
+  const items = d.receivables || d.items || [];
+  const body = document.getElementById('reportBody');
+
+  if (!items.length) { body.innerHTML = '<p class="text-slate-500">Sin cuentas por cobrar</p>'; return; }
+
+  body.innerHTML = `<table class="w-full"><thead><tr class="text-slate-400 border-b border-slate-700 text-xs">
+    <th class="pb-2 text-left">Factura</th><th class="pb-2 text-left">Paciente</th>
+    <th class="pb-2 text-right">Monto</th><th class="pb-2 text-right">Saldo</th><th class="pb-2">Dias</th>
+  </tr></thead><tbody>` +
+  items.map(r => `<tr class="border-b border-slate-800">
+    <td class="py-1 text-blue-400">${r.invoice_number||'-'}</td>
+    <td class="py-1">${r.patient_name||'-'}</td>
+    <td class="py-1 text-right">$${(r.original_amount||r.amount||0).toFixed(2)}</td>
+    <td class="py-1 text-right text-red-400 font-medium">$${(r.balance||0).toFixed(2)}</td>
+    <td class="py-1 text-center text-slate-400">${r.days_outstanding||0}</td>
+  </tr>`).join('') + '</tbody></table>';
+}
+
+async function renderInvoicesPaid() {
+  const res = await api('/api/billing/invoices?status=paid&limit=50');
+  if (!res?.ok) throw new Error();
+  const d = await res.json();
+  const items = d.invoices || [];
+  const body = document.getElementById('reportBody');
+
+  if (!items.length) { body.innerHTML = '<p class="text-slate-500">Sin facturas pagadas</p>'; return; }
+
+  body.innerHTML = `<table class="w-full"><thead><tr class="text-slate-400 border-b border-slate-700 text-xs">
+    <th class="pb-2 text-left">Numero</th><th class="pb-2 text-left">Fecha</th><th class="pb-2 text-left">Paciente</th><th class="pb-2 text-right">Total</th>
+  </tr></thead><tbody>` +
+  items.map(i => `<tr class="border-b border-slate-800">
+    <td class="py-1 text-blue-400">${i.invoice_number||'-'}</td>
+    <td class="py-1 text-slate-400">${i.created_at ? new Date(i.created_at).toLocaleDateString('es-EC') : '-'}</td>
+    <td class="py-1">${i.patient_name||'-'}</td>
+    <td class="py-1 text-right text-green-400">$${(i.total||0).toFixed(2)}</td>
+  </tr>`).join('') + '</tbody></table>';
+}
+
+async function renderLabStats() {
+  const res = await api('/api/lis/stats');
+  if (!res?.ok) throw new Error();
+  const d = await res.json();
+  const body = document.getElementById('reportBody');
+
+  body.innerHTML = `
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div class="bg-slate-800/50 rounded-lg p-3"><p class="text-xs text-slate-400">Muestras Hoy</p><p class="text-xl font-bold">${d.samples_today||0}</p></div>
+      <div class="bg-slate-800/50 rounded-lg p-3"><p class="text-xs text-slate-400">Resultados Pendientes</p><p class="text-xl font-bold text-yellow-400">${d.pending_results||d.pending||0}</p></div>
+      <div class="bg-slate-800/50 rounded-lg p-3"><p class="text-xs text-slate-400">Validados Hoy</p><p class="text-xl font-bold text-green-400">${d.validated_today||0}</p></div>
+      <div class="bg-slate-800/50 rounded-lg p-3"><p class="text-xs text-slate-400">Criticos Hoy</p><p class="text-xl font-bold text-red-400">${d.critical_today||d.critical||0}</p></div>
+      <div class="bg-slate-800/50 rounded-lg p-3"><p class="text-xs text-slate-400">Total Analitos</p><p class="text-xl font-bold">${d.total_analytes||0}</p></div>
+      <div class="bg-slate-800/50 rounded-lg p-3"><p class="text-xs text-slate-400">Equipos Activos</p><p class="text-xl font-bold">${d.active_instruments||0}</p></div>
+      <div class="bg-slate-800/50 rounded-lg p-3"><p class="text-xs text-slate-400">Muestras Semana</p><p class="text-xl font-bold">${d.samples_week||0}</p></div>
+      <div class="bg-slate-800/50 rounded-lg p-3"><p class="text-xs text-slate-400">Muestras Mes</p><p class="text-xl font-bold">${d.samples_month||0}</p></div>
+    </div>`;
 }
 </script>
 {% endblock %}

@@ -9,7 +9,7 @@ if [ -f "$PROJECT_DIR/.env" ]; then
 fi
 
 DB_HOST="${DB_HOST:-localhost}"
-DB_PORT="${DB_PORT:-5432}"
+DB_PORT="${DB_PORT:-5434}"
 DB_NAME="${DB_NAME:-dimed_lis}"
 PG_USER="${PG_USER:-dimed}"
 

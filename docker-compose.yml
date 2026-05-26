@@ -1,5 +1,3 @@
-version: "3.8"
-
 x-common: &common
   restart: unless-stopped
   logging:
@@ -20,12 +18,47 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
-      - "5433:5432"
+      - "${PG_EXT_PORT:-5434}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-dimed} -d ${DB_NAME:-dimed_lis}"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - backend
+
+  init:
+    image: postgres:16-alpine
+    container_name: dimed-lis-init
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-dimed_lis}
+      PG_USER: ${PG_USER:-dimed}
+      PG_PASSWORD: ${PG_PASSWORD}
+    volumes:
+      - ./migrations:/migrations:ro
+      - ./scripts:/scripts:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        export PGPASSWORD="$$PG_PASSWORD"
+        PSQL="psql -h $$DB_HOST -p $$DB_PORT -U $$PG_USER -d $$DB_NAME -v ON_ERROR_STOP=1"
+        $$PSQL -c "CREATE TABLE IF NOT EXISTS lis_migrations (id SERIAL PRIMARY KEY, filename VARCHAR(200) UNIQUE NOT NULL, applied_at TIMESTAMPTZ DEFAULT NOW());" 2>/dev/null
+        for sql_file in /migrations/[0-9]*.sql; do
+          [ -f "$$sql_file" ] || continue
+          fname=$$(basename "$$sql_file")
+          already=$$($$PSQL -t -c "SELECT COUNT(*) FROM lis_migrations WHERE filename='$$fname'" 2>/dev/null | tr -d ' ')
+          if [ "$$already" -gt 0 ]; then continue; fi
+          echo "Aplicando: $$fname"
+          $$PSQL -f "$$sql_file"
+          $$PSQL -c "INSERT INTO lis_migrations(filename) VALUES('$$fname')"
+        done
+        echo "Migraciones completadas."
+    restart: "no"
     networks:
       - backend
 
@@ -44,6 +77,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      init:
+        condition: service_completed_successfully
     networks:
       - backend
 
@@ -71,6 +106,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      init:
+        condition: service_completed_successfully
     networks:
       - backend
 
@@ -89,10 +126,14 @@ services:
       BILLING_URL: http://billing:9009
       WEB_PORT: "9000"
     ports:
-      - "${WEB_PORT:-9000}:9000"
+      - "${WEB_PORT:-9100}:9000"
     depends_on:
-      - lis
-      - billing
+      lis:
+        condition: service_started
+      billing:
+        condition: service_started
+      init:
+        condition: service_completed_successfully
     networks:
       - backend
 

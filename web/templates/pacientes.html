@@ -22,12 +22,114 @@
     <table class="w-full text-sm">
       <thead><tr class="text-slate-400 text-left border-b border-slate-700">
         <th class="pb-2">Documento</th><th class="pb-2">Nombre</th><th class="pb-2">Genero</th>
-        <th class="pb-2">Telefono</th><th class="pb-2">Email</th><th class="pb-2">Ciudad</th>
+        <th class="pb-2">Telefono</th><th class="pb-2">Email</th><th class="pb-2">Ciudad</th><th class="pb-2">Acciones</th>
       </tr></thead>
       <tbody id="patBody">
-        <tr><td colspan="6" class="text-slate-500 py-4 text-center">Busque un paciente</td></tr>
+        <tr><td colspan="7" class="text-slate-500 py-4 text-center">Busque un paciente o registre uno nuevo</td></tr>
       </tbody>
     </table>
+  </div>
+</div>
+
+<!-- Modal Nuevo / Editar Paciente -->
+<div id="patModal" class="fixed inset-0 bg-black/60 z-50 hidden items-center justify-center" onclick="if(event.target===this)closePatModal()">
+  <div class="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+    <div class="flex justify-between items-center p-4 border-b border-slate-700">
+      <h3 class="font-medium" id="patModalTitle">Nuevo Paciente</h3>
+      <button onclick="closePatModal()" class="text-slate-400 hover:text-white text-lg">&times;</button>
+    </div>
+    <form id="patForm" onsubmit="savePatient(event)" class="p-4 space-y-3">
+      <input type="hidden" id="pf_id">
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs text-slate-400">Tipo Documento *</label>
+          <select id="pf_document_type" required class="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm">
+            <option value="cedula">Cedula</option>
+            <option value="ruc">RUC</option>
+            <option value="pasaporte">Pasaporte</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-xs text-slate-400">Numero Documento *</label>
+          <input id="pf_document_id" required class="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm" placeholder="1712345678">
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs text-slate-400">Nombres *</label>
+          <input id="pf_first_name" required class="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm">
+        </div>
+        <div>
+          <label class="text-xs text-slate-400">Apellidos *</label>
+          <input id="pf_last_name" required class="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm">
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs text-slate-400">Fecha Nacimiento</label>
+          <input id="pf_birth_date" type="date" class="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm">
+        </div>
+        <div>
+          <label class="text-xs text-slate-400">Genero</label>
+          <select id="pf_gender" class="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm">
+            <option value="">—</option>
+            <option value="M">Masculino</option>
+            <option value="F">Femenino</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs text-slate-400">Email</label>
+          <input id="pf_email" type="email" class="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm">
+        </div>
+        <div>
+          <label class="text-xs text-slate-400">Telefono</label>
+          <input id="pf_phone" class="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm" placeholder="0991234567">
+        </div>
+      </div>
+      <div>
+        <label class="text-xs text-slate-400">Direccion</label>
+        <input id="pf_address" class="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm">
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs text-slate-400">Ciudad</label>
+          <input id="pf_city" class="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm">
+        </div>
+        <div>
+          <label class="text-xs text-slate-400">Provincia</label>
+          <input id="pf_province" class="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm">
+        </div>
+      </div>
+      <div class="grid grid-cols-3 gap-3">
+        <div>
+          <label class="text-xs text-slate-400">Tipo Sangre</label>
+          <select id="pf_blood_type" class="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm">
+            <option value="">—</option>
+            <option>O+</option><option>O-</option><option>A+</option><option>A-</option>
+            <option>B+</option><option>B-</option><option>AB+</option><option>AB-</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-xs text-slate-400">Contacto Emergencia</label>
+          <input id="pf_emergency_contact" class="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm">
+        </div>
+        <div>
+          <label class="text-xs text-slate-400">Tel. Emergencia</label>
+          <input id="pf_emergency_phone" class="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm">
+        </div>
+      </div>
+      <div>
+        <label class="text-xs text-slate-400">Notas</label>
+        <textarea id="pf_notes" rows="2" class="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm"></textarea>
+      </div>
+      <div id="patFormError" class="text-red-400 text-sm hidden"></div>
+      <div class="flex gap-2 pt-2">
+        <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg py-2 transition-colors">Guardar</button>
+        <button type="button" onclick="closePatModal()" class="px-4 bg-slate-700 hover:bg-slate-600 text-white rounded-lg py-2 transition-colors">Cancelar</button>
+      </div>
+    </form>
   </div>
 </div>
 {% endblock %}
@@ -36,21 +138,87 @@
 <script>
 async function loadPatients() {
   const q = document.getElementById('patQ').value;
-  if (!q) return;
-  const res = await api('/api/patients?q=' + encodeURIComponent(q));
+  const res = await api('/api/patients?q=' + encodeURIComponent(q || ''));
   if (!res?.ok) return;
   const data = await res.json();
   const tbody = document.getElementById('patBody');
-  if (!data.patients?.length) { tbody.innerHTML = '<tr><td colspan="6" class="text-slate-500 py-4 text-center">Sin resultados</td></tr>'; return; }
-  tbody.innerHTML = data.patients.map(p => `<tr class="border-b border-slate-800">
+  if (!data.patients?.length) { tbody.innerHTML = '<tr><td colspan="7" class="text-slate-500 py-4 text-center">Sin resultados</td></tr>'; return; }
+  tbody.innerHTML = data.patients.map(p => `<tr class="border-b border-slate-800 hover:bg-slate-800/50">
     <td class="py-2 text-blue-400">${p.document_id}</td>
     <td class="py-2">${p.full_name}</td>
-    <td class="py-2">${p.gender==='M'?'Masculino':'Femenino'}</td>
+    <td class="py-2">${p.gender==='M'?'Masculino':p.gender==='F'?'Femenino':'-'}</td>
     <td class="py-2 text-slate-400">${p.phone||'-'}</td>
     <td class="py-2 text-slate-400">${p.email||'-'}</td>
     <td class="py-2">${p.city||'-'}</td>
+    <td class="py-2"><button onclick='editPatient(${JSON.stringify(p)})' class="text-blue-400 hover:text-blue-300 text-xs">Editar</button></td>
   </tr>`).join('');
 }
-function showNewPatient() { alert('Formulario nuevo paciente — pendiente'); }
+
+function showNewPatient() {
+  document.getElementById('patModalTitle').textContent = 'Nuevo Paciente';
+  document.getElementById('patForm').reset();
+  document.getElementById('pf_id').value = '';
+  document.getElementById('patFormError').classList.add('hidden');
+  document.getElementById('patModal').classList.remove('hidden');
+  document.getElementById('patModal').classList.add('flex');
+}
+
+function editPatient(p) {
+  document.getElementById('patModalTitle').textContent = 'Editar Paciente';
+  document.getElementById('pf_id').value = p.id;
+  document.getElementById('pf_document_type').value = p.document_type || 'cedula';
+  document.getElementById('pf_document_id').value = p.document_id || '';
+  document.getElementById('pf_first_name').value = p.first_name || '';
+  document.getElementById('pf_last_name').value = p.last_name || '';
+  document.getElementById('pf_birth_date').value = p.birth_date ? p.birth_date.substring(0,10) : '';
+  document.getElementById('pf_gender').value = p.gender || '';
+  document.getElementById('pf_email').value = p.email || '';
+  document.getElementById('pf_phone').value = p.phone || '';
+  document.getElementById('pf_address').value = p.address || '';
+  document.getElementById('pf_city').value = p.city || '';
+  document.getElementById('pf_province').value = p.province || '';
+  document.getElementById('pf_blood_type').value = p.blood_type || '';
+  document.getElementById('pf_emergency_contact').value = p.emergency_contact || '';
+  document.getElementById('pf_emergency_phone').value = p.emergency_phone || '';
+  document.getElementById('pf_notes').value = p.notes || '';
+  document.getElementById('patFormError').classList.add('hidden');
+  document.getElementById('patModal').classList.remove('hidden');
+  document.getElementById('patModal').classList.add('flex');
+}
+
+function closePatModal() {
+  document.getElementById('patModal').classList.add('hidden');
+  document.getElementById('patModal').classList.remove('flex');
+}
+
+async function savePatient(e) {
+  e.preventDefault();
+  const errDiv = document.getElementById('patFormError');
+  errDiv.classList.add('hidden');
+
+  const fields = ['document_type','document_id','first_name','last_name','birth_date','gender','email','phone','address','city','province','blood_type','emergency_contact','emergency_phone','notes'];
+  const body = {};
+  fields.forEach(f => { const v = document.getElementById('pf_'+f).value.trim(); if (v) body[f] = v; });
+
+  const id = document.getElementById('pf_id').value;
+  const url = id ? `/api/patients/${id}` : '/api/patients';
+  const method = id ? 'PUT' : 'POST';
+
+  const res = await api(url, {method, body: JSON.stringify(body)});
+  if (!res) return;
+  const data = await res.json();
+
+  if (!res.ok) {
+    errDiv.textContent = data.error || 'Error al guardar';
+    errDiv.classList.remove('hidden');
+    return;
+  }
+
+  closePatModal();
+  loadPatients();
+}
+
+// Load all patients on page load
+loadPatients();
 </script>
 {% endblock %}

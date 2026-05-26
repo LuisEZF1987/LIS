@@ -334,37 +334,37 @@ def api_me():
 @app.route("/app/dashboard")
 @require_auth("dashboard")
 def page_dashboard():
-    return render_template("dashboard.html", user=request.current_user)
+    return render_template("dashboard.html", user=request.current_user, page="dashboard")
 
 
 @app.route("/app/laboratorio")
 @require_auth("laboratorio")
 def page_laboratorio():
-    return render_template("laboratorio.html", user=request.current_user)
+    return render_template("laboratorio.html", user=request.current_user, page="laboratorio")
 
 
 @app.route("/app/facturacion")
 @require_auth("facturacion")
 def page_facturacion():
-    return render_template("facturacion.html", user=request.current_user)
+    return render_template("facturacion.html", user=request.current_user, page="facturacion")
 
 
 @app.route("/app/caja")
 @require_auth("caja")
 def page_caja():
-    return render_template("caja.html", user=request.current_user)
+    return render_template("caja.html", user=request.current_user, page="caja")
 
 
 @app.route("/app/pacientes")
 @require_auth("pacientes")
 def page_pacientes():
-    return render_template("pacientes.html", user=request.current_user)
+    return render_template("pacientes.html", user=request.current_user, page="pacientes")
 
 
 @app.route("/app/reportes")
 @require_auth("reportes")
 def page_reportes():
-    return render_template("reportes.html", user=request.current_user)
+    return render_template("reportes.html", user=request.current_user, page="reportes")
 
 # ═══════════════════════════════════════════════════════════════════════════
 # PROXY TO MICROSERVICES

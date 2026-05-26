@@ -243,14 +243,17 @@ def _generate_sri_number(cur, establecimiento, punto_emision):
 def _get_fiscal_period(cur, inv_date):
     """Find fiscal period for a date (returns None if table doesn't exist yet)."""
     try:
+        cur.execute("SAVEPOINT _fp_check")
         cur.execute(
             "SELECT id FROM lis_fiscal_periods "
             "WHERE start_date <= %s AND end_date >= %s LIMIT 1",
             (inv_date, inv_date),
         )
         row = cur.fetchone()
+        cur.execute("RELEASE SAVEPOINT _fp_check")
         return row["id"] if row else None
     except Exception:
+        cur.execute("ROLLBACK TO SAVEPOINT _fp_check")
         return None
 
 
@@ -1119,15 +1122,20 @@ def invoice_pdf(inv_id):
 
             # Check for SRI authorization
             sri_data = None
-            cur.execute(
-                "SELECT * FROM lis_sri_documents WHERE invoice_id = %s "
-                "AND estado_autorizacion = 'AUTORIZADO' "
-                "ORDER BY created_at DESC LIMIT 1",
-                (inv_id,),
-            )
-            sri_row = cur.fetchone()
-            if sri_row:
-                sri_data = _dec(sri_row)
+            try:
+                cur.execute("SAVEPOINT _sri_check")
+                cur.execute(
+                    "SELECT * FROM sri_comprobantes WHERE invoice_id = %s "
+                    "AND estado_autorizacion = 'AUTORIZADO' "
+                    "ORDER BY created_at DESC LIMIT 1",
+                    (inv_id,),
+                )
+                sri_row = cur.fetchone()
+                cur.execute("RELEASE SAVEPOINT _sri_check")
+                if sri_row:
+                    sri_data = _dec(sri_row)
+            except Exception:
+                cur.execute("ROLLBACK TO SAVEPOINT _sri_check")
 
         # Try RIDE PDF first if SRI authorized
         if sri_data:
@@ -1424,14 +1432,17 @@ def apply_payment():
     data = request.get_json(silent=True) or {}
 
     recv_id = data.get("receivable_id")
+    invoice_id = data.get("invoice_id")
     amount = float(data.get("amount", 0))
     source = data.get("payment_source", "efectivo")
     reference = data.get("payment_reference", "")
 
-    if not recv_id or amount <= 0:
+    if not recv_id and not invoice_id:
         return jsonify({
-            "error": "receivable_id y amount > 0 son requeridos"
+            "error": "receivable_id o invoice_id son requeridos"
         }), 400
+    if amount <= 0:
+        return jsonify({"error": "amount debe ser > 0"}), 400
 
     valid_sources = ("efectivo", "tarjeta_debito", "tarjeta_credito", "transferencia")
     if source not in valid_sources:
@@ -1442,6 +1453,19 @@ def apply_payment():
     conn = get_db()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            # Resolve invoice_id to receivable if needed
+            if not recv_id and invoice_id:
+                cur.execute(
+                    "SELECT id FROM lis_accounts_receivable "
+                    "WHERE invoice_id = %s AND status != 'paid' "
+                    "ORDER BY id LIMIT 1",
+                    (invoice_id,),
+                )
+                row = cur.fetchone()
+                if not row:
+                    return jsonify({"error": "No hay cuenta por cobrar para esta factura"}), 404
+                recv_id = row["id"]
+
             cur.execute(
                 "SELECT ar.*, i.branch_id, i.id AS inv_id, i.invoice_number "
                 "FROM lis_accounts_receivable ar "
@@ -1452,7 +1476,7 @@ def apply_payment():
             ar = cur.fetchone()
             if not ar:
                 return jsonify({"error": "Cuenta por cobrar no encontrada"}), 404
-            _dec(ar)
+            ar = _dec(ar)
 
             balance = ar["amount"] - ar["paid_amount"]
             if amount > balance + 0.01:
@@ -1473,11 +1497,11 @@ def apply_payment():
             # Record payment application
             cur.execute(
                 "INSERT INTO lis_payment_applications "
-                "(receivable_id, invoice_id, amount, payment_source, "
+                "(receivable_id, amount, payment_source, "
                 "payment_reference, applied_by) "
-                "VALUES (%s,%s,%s,%s,%s,%s) RETURNING id",
+                "VALUES (%s,%s,%s,%s,%s) RETURNING id",
                 (
-                    recv_id, ar["inv_id"], amount, source,
+                    recv_id, amount, source,
                     reference, cu.get("user_id"),
                 ),
             )
@@ -1682,8 +1706,9 @@ def daily_sales():
                 f"COUNT(*) AS count, "
                 f"COALESCE(SUM(pa.amount), 0) AS total "
                 f"FROM lis_payment_applications pa "
-                f"JOIN lis_invoices i ON i.id = pa.invoice_id "
-                f"{where} AND pa.created_at::date = %s "
+                f"JOIN lis_accounts_receivable ar ON ar.id = pa.receivable_id "
+                f"JOIN lis_invoices i ON i.id = ar.invoice_id "
+                f"{where} AND pa.applied_at::date = %s "
                 f"GROUP BY pa.payment_source ORDER BY total DESC",
                 params + [report_date],
             )

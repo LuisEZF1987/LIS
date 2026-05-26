@@ -23,21 +23,23 @@
 .tab-content{display:none}.tab-content.active{display:block}
 </style>
 
-<!-- Worklist -->
+<!-- ===== Worklist ===== -->
 <div class="tab-content active" id="tab-worklist">
   <div class="card">
     <div class="flex gap-2 mb-3">
       <input id="wlSearch" type="text" placeholder="Buscar por paciente o codigo..."
-        class="bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm flex-1 focus:outline-none focus:border-blue-500">
-      <select id="wlStatus" class="bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm">
+        class="bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm flex-1 focus:outline-none focus:border-blue-500"
+        onkeyup="if(event.key==='Enter')loadWorklist()">
+      <select id="wlStatus" class="bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm" onchange="loadWorklist()">
         <option value="">Todos</option>
         <option value="collected">Recolectada</option>
         <option value="received">Recibida</option>
         <option value="in_process">En Proceso</option>
         <option value="completed">Completada</option>
       </select>
+      <button onclick="loadWorklist()" class="bg-slate-700 hover:bg-slate-600 text-white text-sm px-3 py-1.5 rounded-lg">Actualizar</button>
     </div>
-    <div id="worklistTable" class="overflow-x-auto">
+    <div class="overflow-x-auto">
       <table class="w-full text-sm">
         <thead><tr class="text-slate-400 text-left border-b border-slate-700">
           <th class="pb-2">Codigo</th><th class="pb-2">Paciente</th><th class="pb-2">Tipo</th>
@@ -49,53 +51,173 @@
   </div>
 </div>
 
-<!-- Samples -->
+<!-- ===== Samples detail ===== -->
 <div class="tab-content" id="tab-samples">
-  <div class="card"><p class="text-slate-400">Gestion de muestras — busqueda avanzada y detalle.</p></div>
+  <div class="card">
+    <div class="flex gap-2 mb-3">
+      <input id="smpSearch" type="text" placeholder="Buscar muestra por codigo o paciente..."
+        class="bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm flex-1 focus:outline-none focus:border-blue-500"
+        onkeyup="if(event.key==='Enter')loadSamples()">
+      <button onclick="loadSamples()" class="bg-slate-700 hover:bg-slate-600 text-white text-sm px-3 py-1.5 rounded-lg">Buscar</button>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead><tr class="text-slate-400 text-left border-b border-slate-700">
+          <th class="pb-2">Codigo</th><th class="pb-2">Paciente</th><th class="pb-2">Tipo</th>
+          <th class="pb-2">Resultados</th><th class="pb-2">Estado</th><th class="pb-2">Fecha</th><th class="pb-2">Acciones</th>
+        </tr></thead>
+        <tbody id="smpBody"><tr><td colspan="7" class="text-slate-500 py-4 text-center">Busque una muestra</td></tr></tbody>
+      </table>
+    </div>
+  </div>
 </div>
 
-<!-- Analytes -->
+<!-- ===== Analytes ===== -->
 <div class="tab-content" id="tab-analytes">
-  <div class="card"><p class="text-slate-400">Catalogo de analitos y rangos de referencia.</p></div>
+  <div class="card">
+    <div class="flex justify-between items-center mb-3">
+      <input id="anaSearch" type="text" placeholder="Buscar analito..."
+        class="bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm flex-1 mr-2 focus:outline-none focus:border-blue-500"
+        oninput="filterAnalytes()">
+      <button onclick="showNewAnalyte()" class="bg-blue-600 hover:bg-blue-500 text-white text-sm px-3 py-1.5 rounded-lg">+ Analito</button>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead><tr class="text-slate-400 text-left border-b border-slate-700">
+          <th class="pb-2">Codigo</th><th class="pb-2">Nombre</th><th class="pb-2">Unidad</th>
+          <th class="pb-2">Categoria</th><th class="pb-2">Metodo</th><th class="pb-2">Estado</th>
+        </tr></thead>
+        <tbody id="anaBody"><tr><td colspan="6" class="text-slate-500 py-4 text-center">Cargando...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
 </div>
 
-<!-- QC -->
+<!-- ===== QC ===== -->
 <div class="tab-content" id="tab-qc">
-  <div class="card"><p class="text-slate-400">Control de calidad y graficos de Levey-Jennings.</p></div>
+  <div class="card">
+    <div class="flex gap-2 mb-3">
+      <select id="qcInstrument" class="bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm" onchange="loadQc()">
+        <option value="">Seleccionar equipo...</option>
+      </select>
+      <select id="qcAnalyte" class="bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm" onchange="loadQc()">
+        <option value="">Seleccionar analito...</option>
+      </select>
+      <button onclick="showNewQc()" class="bg-blue-600 hover:bg-blue-500 text-white text-sm px-3 py-1.5 rounded-lg">+ Registro QC</button>
+    </div>
+    <div id="qcChart" class="bg-slate-800/50 rounded-lg p-4 min-h-48">
+      <p class="text-slate-500 text-sm text-center">Seleccione equipo y analito para ver el grafico de Levey-Jennings</p>
+    </div>
+    <div class="overflow-x-auto mt-4">
+      <table class="w-full text-sm">
+        <thead><tr class="text-slate-400 text-left border-b border-slate-700">
+          <th class="pb-2">Fecha</th><th class="pb-2">Nivel</th><th class="pb-2">Valor</th>
+          <th class="pb-2">Media</th><th class="pb-2">DE</th><th class="pb-2">Estado</th>
+        </tr></thead>
+        <tbody id="qcBody"><tr><td colspan="6" class="text-slate-500 py-4 text-center">Sin datos QC</td></tr></tbody>
+      </table>
+    </div>
+  </div>
 </div>
 
-<!-- Instruments -->
+<!-- ===== Instruments ===== -->
 <div class="tab-content" id="tab-instruments">
-  <div class="card"><p class="text-slate-400">Gestion de analizadores y equipos.</p></div>
+  <div class="card">
+    <div class="flex justify-between items-center mb-3">
+      <h3 class="text-sm font-medium text-slate-300">Equipos / Analizadores</h3>
+      <button onclick="showNewInstrument()" class="bg-blue-600 hover:bg-blue-500 text-white text-sm px-3 py-1.5 rounded-lg">+ Equipo</button>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead><tr class="text-slate-400 text-left border-b border-slate-700">
+          <th class="pb-2">Nombre</th><th class="pb-2">Modelo</th><th class="pb-2">Serial</th>
+          <th class="pb-2">Ubicacion</th><th class="pb-2">Estado</th>
+        </tr></thead>
+        <tbody id="instBody"><tr><td colspan="5" class="text-slate-500 py-4 text-center">Cargando...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
 </div>
 
+<!-- ===== Sample Detail Modal ===== -->
+<div id="sampleModal" class="fixed inset-0 bg-black/60 z-50 hidden items-center justify-center" onclick="if(event.target===this)closeSampleModal()">
+  <div class="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+    <div class="flex justify-between items-center p-4 border-b border-slate-700">
+      <h3 class="font-medium" id="sampleModalTitle">Detalle de Muestra</h3>
+      <button onclick="closeSampleModal()" class="text-slate-400 hover:text-white text-lg">&times;</button>
+    </div>
+    <div class="p-4">
+      <div id="sampleInfo" class="mb-4 text-sm space-y-1"></div>
+      <h4 class="text-sm font-medium text-slate-300 mb-2">Resultados</h4>
+      <table class="w-full text-sm mb-4">
+        <thead><tr class="text-slate-400 text-left border-b border-slate-700">
+          <th class="pb-2">Analito</th><th class="pb-2">Valor</th><th class="pb-2">Unidad</th>
+          <th class="pb-2">Ref.</th><th class="pb-2">Flag</th><th class="pb-2">Estado</th><th class="pb-2">Accion</th>
+        </tr></thead>
+        <tbody id="resultsBody"></tbody>
+      </table>
+      <div class="flex gap-2">
+        <button onclick="validateAllTech()" id="btnValTech" class="bg-yellow-600 hover:bg-yellow-500 text-white text-sm px-4 py-2 rounded-lg hidden">Validar Tecnico</button>
+        <button onclick="validateAllMed()" id="btnValMed" class="bg-green-600 hover:bg-green-500 text-white text-sm px-4 py-2 rounded-lg hidden">Validar Medico</button>
+        <button onclick="downloadPdf()" id="btnPdf" class="bg-blue-600 hover:bg-blue-500 text-white text-sm px-4 py-2 rounded-lg hidden">Descargar PDF</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== New Sample Modal ===== -->
+<div id="newSampleModal" class="fixed inset-0 bg-black/60 z-50 hidden items-center justify-center" onclick="if(event.target===this)closeNewSample()">
+  <div class="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-md mx-4">
+    <div class="flex justify-between items-center p-4 border-b border-slate-700">
+      <h3 class="font-medium">Nueva Muestra</h3>
+      <button onclick="closeNewSample()" class="text-slate-400 hover:text-white text-lg">&times;</button>
+    </div>
+    <form onsubmit="createSample(event)" class="p-4 space-y-3">
+      <div>
+        <label class="text-xs text-slate-400">Documento Paciente *</label>
+        <input id="ns_patient_doc" required class="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm" placeholder="1712345678">
+      </div>
+      <div>
+        <label class="text-xs text-slate-400">Nombre Paciente *</label>
+        <input id="ns_patient_name" required class="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm">
+      </div>
+      <div>
+        <label class="text-xs text-slate-400">Tipo Muestra</label>
+        <select id="ns_sample_type" class="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm">
+          <option value="blood">Sangre</option>
+          <option value="urine">Orina</option>
+          <option value="stool">Heces</option>
+          <option value="csf">LCR</option>
+          <option value="other">Otro</option>
+        </select>
+      </div>
+      <div>
+        <label class="text-xs text-slate-400">Notas</label>
+        <input id="ns_notes" class="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-3 py-1.5 text-sm">
+      </div>
+      <div id="nsError" class="text-red-400 text-sm hidden"></div>
+      <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg py-2">Crear Muestra</button>
+    </form>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+let allAnalytes = [];
+let currentSampleId = null;
+
 function switchTab(tab) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
   document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
   document.getElementById(`tab-${tab}`).classList.add('active');
+  if (tab === 'analytes' && !allAnalytes.length) loadAnalytes();
+  if (tab === 'instruments') loadInstruments();
+  if (tab === 'qc') loadQcDropdowns();
 }
 
-async function loadWorklist() {
-  const res = await api('/api/lis/worklist');
-  if (!res?.ok) return;
-  const data = await res.json();
-  const tbody = document.getElementById('wlBody');
-  if (!data.items?.length) { tbody.innerHTML = '<tr><td colspan="6" class="text-slate-500 py-4 text-center">Sin muestras pendientes</td></tr>'; return; }
-  tbody.innerHTML = data.items.map(s => `<tr class="border-b border-slate-800">
-    <td class="py-2 text-blue-400">${s.sample_code}</td>
-    <td class="py-2">${s.patient_name||'-'}</td>
-    <td class="py-2">${s.sample_type}</td>
-    <td class="py-2"><span class="px-2 py-0.5 rounded text-xs ${statusColor(s.status)}">${statusLabel(s.status)}</span></td>
-    <td class="py-2 text-slate-400">${new Date(s.collection_date).toLocaleDateString('es-EC')}</td>
-    <td class="py-2"><button onclick="openSample(${s.id})" class="text-blue-400 hover:text-blue-300 text-xs">Ver</button></td>
-  </tr>`).join('');
-}
-
+// ===== Status helpers =====
 function statusColor(s) {
   return {collected:'bg-slate-700 text-slate-300',received:'bg-blue-900 text-blue-300',
     in_process:'bg-yellow-900 text-yellow-300',completed:'bg-green-900 text-green-300',
@@ -105,9 +227,290 @@ function statusLabel(s) {
   return {collected:'Recolectada',received:'Recibida',in_process:'En Proceso',
     completed:'Completada',rejected:'Rechazada'}[s] || s;
 }
-function showNewSample() { alert('Formulario de nueva muestra — pendiente'); }
-function openSample(id) { alert('Detalle de muestra #' + id + ' — pendiente'); }
+function resultStatusLabel(s) {
+  return {pending:'Pendiente',preliminary:'Preliminar',final:'Validado',cancelled:'Cancelado'}[s] || s;
+}
+function flagBadge(f) {
+  if (!f || f === 'normal') return '';
+  const colors = {low:'text-yellow-400',high:'text-yellow-400',critical_low:'text-red-400',critical_high:'text-red-400'};
+  const labels = {low:'Bajo',high:'Alto',critical_low:'Critico Bajo',critical_high:'Critico Alto'};
+  return `<span class="${colors[f]||'text-yellow-400'} font-medium">${labels[f]||f}</span>`;
+}
 
+// ===== Worklist =====
+async function loadWorklist() {
+  const params = new URLSearchParams();
+  const status = document.getElementById('wlStatus').value;
+  if (status) params.set('status', status);
+  const res = await api('/api/lis/worklist?' + params);
+  if (!res?.ok) { document.getElementById('wlBody').innerHTML = '<tr><td colspan="6" class="text-slate-500 py-4 text-center">Error al cargar</td></tr>'; return; }
+  const data = await res.json();
+  const items = data.items || data.samples || [];
+  const tbody = document.getElementById('wlBody');
+  if (!items.length) { tbody.innerHTML = '<tr><td colspan="6" class="text-slate-500 py-4 text-center">Sin muestras</td></tr>'; return; }
+  tbody.innerHTML = items.map(s => `<tr class="border-b border-slate-800 hover:bg-slate-800/50">
+    <td class="py-2 text-blue-400">${s.sample_code||s.id}</td>
+    <td class="py-2">${s.patient_name||'-'}</td>
+    <td class="py-2">${{blood:'Sangre',urine:'Orina',stool:'Heces',csf:'LCR'}[s.sample_type]||s.sample_type||'-'}</td>
+    <td class="py-2"><span class="px-2 py-0.5 rounded text-xs ${statusColor(s.status)}">${statusLabel(s.status)}</span></td>
+    <td class="py-2 text-slate-400">${s.collection_date ? new Date(s.collection_date).toLocaleDateString('es-EC') : '-'}</td>
+    <td class="py-2">
+      <button onclick="openSample(${s.id})" class="text-blue-400 hover:text-blue-300 text-xs mr-2">Ver</button>
+      ${s.status==='collected'?`<button onclick="updateStatus(${s.id},'received')" class="text-green-400 hover:text-green-300 text-xs">Recibir</button>`:''}
+      ${s.status==='received'?`<button onclick="updateStatus(${s.id},'in_process')" class="text-yellow-400 hover:text-yellow-300 text-xs">Procesar</button>`:''}
+    </td>
+  </tr>`).join('');
+}
+
+async function updateStatus(sampleId, newStatus) {
+  const res = await api(`/api/lis/samples/${sampleId}/status`, {method:'PUT', body: JSON.stringify({status: newStatus})});
+  if (res?.ok) loadWorklist();
+}
+
+// ===== Sample detail modal =====
+async function openSample(id) {
+  currentSampleId = id;
+  const res = await api(`/api/lis/samples/${id}`);
+  if (!res?.ok) return;
+  const data = await res.json();
+  const s = data.sample || data;
+
+  document.getElementById('sampleModalTitle').textContent = `Muestra ${s.sample_code||s.id}`;
+  document.getElementById('sampleInfo').innerHTML = `
+    <div class="grid grid-cols-2 gap-2">
+      <div><span class="text-slate-400">Paciente:</span> ${s.patient_name||'-'}</div>
+      <div><span class="text-slate-400">Documento:</span> ${s.patient_document||'-'}</div>
+      <div><span class="text-slate-400">Tipo:</span> ${{blood:'Sangre',urine:'Orina',stool:'Heces',csf:'LCR'}[s.sample_type]||s.sample_type||'-'}</div>
+      <div><span class="text-slate-400">Estado:</span> <span class="px-2 py-0.5 rounded text-xs ${statusColor(s.status)}">${statusLabel(s.status)}</span></div>
+      <div><span class="text-slate-400">Fecha:</span> ${s.collection_date ? new Date(s.collection_date).toLocaleString('es-EC') : '-'}</div>
+      ${s.notes ? `<div class="col-span-2"><span class="text-slate-400">Notas:</span> ${s.notes}</div>` : ''}
+    </div>`;
+
+  const results = s.results || [];
+  const tbody = document.getElementById('resultsBody');
+  if (results.length) {
+    tbody.innerHTML = results.map(r => `<tr class="border-b border-slate-800">
+      <td class="py-2">${r.analyte_name||r.analyte||'-'}</td>
+      <td class="py-2 font-medium ${r.flag && r.flag !== 'normal' ? (r.flag.includes('critical') ? 'text-red-400' : 'text-yellow-400') : 'text-white'}">
+        <input type="text" value="${r.value||''}" onchange="updateResult(${r.id}, this.value)"
+          class="bg-transparent border-b border-slate-600 focus:border-blue-400 outline-none w-20 text-right ${r.status==='final'?'cursor-not-allowed':''}" ${r.status==='final'?'disabled':''}>
+      </td>
+      <td class="py-2 text-slate-400">${r.unit||''}</td>
+      <td class="py-2 text-slate-400 text-xs">${r.ref_range_text||''}</td>
+      <td class="py-2">${flagBadge(r.flag)}</td>
+      <td class="py-2 text-xs">${resultStatusLabel(r.status)}</td>
+      <td class="py-2">
+        ${r.status==='pending'?`<button onclick="valTech(${r.id})" class="text-yellow-400 hover:text-yellow-300 text-xs">V.Tec</button>`:''}
+        ${r.status==='preliminary'?`<button onclick="valMed(${r.id})" class="text-green-400 hover:text-green-300 text-xs">V.Med</button>`:''}
+      </td>
+    </tr>`).join('');
+
+    const hasPending = results.some(r => r.status === 'pending');
+    const hasPrelim = results.some(r => r.status === 'preliminary');
+    const allFinal = results.every(r => r.status === 'final');
+    document.getElementById('btnValTech').classList.toggle('hidden', !hasPending);
+    document.getElementById('btnValMed').classList.toggle('hidden', !hasPrelim);
+    document.getElementById('btnPdf').classList.toggle('hidden', !allFinal);
+  } else {
+    tbody.innerHTML = '<tr><td colspan="7" class="text-slate-500 py-4 text-center">Sin resultados registrados</td></tr>';
+    document.getElementById('btnValTech').classList.add('hidden');
+    document.getElementById('btnValMed').classList.add('hidden');
+    document.getElementById('btnPdf').classList.add('hidden');
+  }
+
+  document.getElementById('sampleModal').classList.remove('hidden');
+  document.getElementById('sampleModal').classList.add('flex');
+}
+
+function closeSampleModal() {
+  document.getElementById('sampleModal').classList.add('hidden');
+  document.getElementById('sampleModal').classList.remove('flex');
+}
+
+async function updateResult(resultId, value) {
+  await api(`/api/lis/results/${resultId}`, {method:'PUT', body: JSON.stringify({value})});
+}
+
+async function valTech(resultId) {
+  const res = await api(`/api/lis/results/${resultId}/validate-tech`, {method:'POST'});
+  if (res?.ok) openSample(currentSampleId);
+}
+async function valMed(resultId) {
+  const res = await api(`/api/lis/results/${resultId}/validate-med`, {method:'POST'});
+  if (res?.ok) openSample(currentSampleId);
+}
+async function validateAllTech() {
+  const res = await api(`/api/lis/samples/${currentSampleId}/validate-all`, {method:'POST', body: JSON.stringify({validation_type:'technical'})});
+  if (res?.ok) openSample(currentSampleId);
+}
+async function validateAllMed() {
+  const res = await api(`/api/lis/samples/${currentSampleId}/validate-all`, {method:'POST', body: JSON.stringify({validation_type:'medical'})});
+  if (res?.ok) openSample(currentSampleId);
+}
+function downloadPdf() {
+  window.open(`/api/lis/samples/${currentSampleId}/pdf`, '_blank');
+}
+
+// ===== Samples search =====
+async function loadSamples() {
+  const q = document.getElementById('smpSearch').value.trim();
+  const params = new URLSearchParams();
+  if (q) params.set('q', q);
+  const res = await api('/api/lis/samples?' + params);
+  if (!res?.ok) return;
+  const data = await res.json();
+  const items = data.items || data.samples || [];
+  const tbody = document.getElementById('smpBody');
+  if (!items.length) { tbody.innerHTML = '<tr><td colspan="7" class="text-slate-500 py-4 text-center">Sin resultados</td></tr>'; return; }
+  tbody.innerHTML = items.map(s => `<tr class="border-b border-slate-800 hover:bg-slate-800/50">
+    <td class="py-2 text-blue-400">${s.sample_code||s.id}</td>
+    <td class="py-2">${s.patient_name||'-'}</td>
+    <td class="py-2">${{blood:'Sangre',urine:'Orina',stool:'Heces',csf:'LCR'}[s.sample_type]||s.sample_type||'-'}</td>
+    <td class="py-2 text-slate-400">${s.result_count||'-'}</td>
+    <td class="py-2"><span class="px-2 py-0.5 rounded text-xs ${statusColor(s.status)}">${statusLabel(s.status)}</span></td>
+    <td class="py-2 text-slate-400">${s.collection_date ? new Date(s.collection_date).toLocaleDateString('es-EC') : '-'}</td>
+    <td class="py-2"><button onclick="openSample(${s.id})" class="text-blue-400 hover:text-blue-300 text-xs">Ver</button></td>
+  </tr>`).join('');
+}
+
+// ===== Analytes =====
+async function loadAnalytes() {
+  const res = await api('/api/lis/analytes');
+  if (!res?.ok) return;
+  const data = await res.json();
+  allAnalytes = data.analytes || data.items || [];
+  renderAnalytes(allAnalytes);
+}
+function renderAnalytes(items) {
+  const tbody = document.getElementById('anaBody');
+  if (!items.length) { tbody.innerHTML = '<tr><td colspan="6" class="text-slate-500 py-4 text-center">Sin analitos</td></tr>'; return; }
+  tbody.innerHTML = items.map(a => `<tr class="border-b border-slate-800">
+    <td class="py-2 text-blue-400">${a.code||'-'}</td>
+    <td class="py-2">${a.name}</td>
+    <td class="py-2 text-slate-400">${a.unit||'-'}</td>
+    <td class="py-2 text-slate-400">${a.category||'-'}</td>
+    <td class="py-2 text-slate-400">${a.method||'-'}</td>
+    <td class="py-2">${a.is_active!==false?'<span class="text-green-400 text-xs">Activo</span>':'<span class="text-red-400 text-xs">Inactivo</span>'}</td>
+  </tr>`).join('');
+}
+function filterAnalytes() {
+  const q = document.getElementById('anaSearch').value.toLowerCase();
+  renderAnalytes(allAnalytes.filter(a => (a.name||'').toLowerCase().includes(q) || (a.code||'').toLowerCase().includes(q)));
+}
+function showNewAnalyte() { alert('Formulario de nuevo analito — pendiente de implementacion'); }
+
+// ===== QC =====
+async function loadQcDropdowns() {
+  const [instRes, anaRes] = await Promise.allSettled([api('/api/lis/instruments'), api('/api/lis/analytes')]);
+  if (instRes.status === 'fulfilled' && instRes.value?.ok) {
+    const d = await instRes.value.json();
+    const sel = document.getElementById('qcInstrument');
+    const instruments = d.instruments || d.items || [];
+    sel.innerHTML = '<option value="">Seleccionar equipo...</option>' + instruments.map(i => `<option value="${i.id}">${i.name}</option>`).join('');
+  }
+  if (anaRes.status === 'fulfilled' && anaRes.value?.ok) {
+    const d = await anaRes.value.json();
+    const sel = document.getElementById('qcAnalyte');
+    const analytes = d.analytes || d.items || [];
+    sel.innerHTML = '<option value="">Seleccionar analito...</option>' + analytes.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+  }
+}
+async function loadQc() {
+  const instId = document.getElementById('qcInstrument').value;
+  const anaId = document.getElementById('qcAnalyte').value;
+  if (!instId || !anaId) return;
+  const res = await api(`/api/lis/qc/levey-jennings/${instId}/${anaId}`);
+  if (!res?.ok) return;
+  const data = await res.json();
+  const points = data.points || data.items || [];
+  const tbody = document.getElementById('qcBody');
+  const chart = document.getElementById('qcChart');
+
+  if (!points.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="text-slate-500 py-4 text-center">Sin datos QC para esta combinacion</td></tr>';
+    chart.innerHTML = '<p class="text-slate-500 text-sm text-center">Sin datos</p>';
+    return;
+  }
+
+  tbody.innerHTML = points.map(p => {
+    const zScore = p.sd && p.sd !== 0 ? Math.abs((p.value - p.mean) / p.sd) : 0;
+    const qcStatus = zScore > 2 ? 'text-red-400' : zScore > 1 ? 'text-yellow-400' : 'text-green-400';
+    const qcLabel = zScore > 2 ? 'Fuera' : zScore > 1 ? 'Alerta' : 'OK';
+    return `<tr class="border-b border-slate-800">
+      <td class="py-2 text-slate-400">${p.created_at ? new Date(p.created_at).toLocaleDateString('es-EC') : '-'}</td>
+      <td class="py-2">${p.level||'-'}</td>
+      <td class="py-2 font-medium">${p.value}</td>
+      <td class="py-2 text-slate-400">${p.mean||'-'}</td>
+      <td class="py-2 text-slate-400">${p.sd||'-'}</td>
+      <td class="py-2"><span class="${qcStatus} text-xs font-medium">${qcLabel}</span></td>
+    </tr>`;
+  }).join('');
+
+  // Simple text-based LJ chart
+  const mean = data.mean || points[0]?.mean || 0;
+  const sd = data.sd || points[0]?.sd || 1;
+  chart.innerHTML = `<div class="text-xs text-slate-400 mb-2">Levey-Jennings: Media=${mean}, DE=${sd}</div>
+    <div class="flex items-end gap-1 h-32">
+      ${points.slice(-30).map(p => {
+        const z = sd !== 0 ? (p.value - mean) / sd : 0;
+        const pct = Math.max(5, Math.min(95, 50 + z * 15));
+        const color = Math.abs(z) > 2 ? 'bg-red-500' : Math.abs(z) > 1 ? 'bg-yellow-500' : 'bg-green-500';
+        return `<div class="${color} w-2 rounded-t" style="height:${pct}%" title="Valor:${p.value}"></div>`;
+      }).join('')}
+    </div>
+    <div class="flex justify-between text-xs text-slate-500 mt-1"><span>+2DE</span><span>Media</span><span>-2DE</span></div>`;
+}
+function showNewQc() { alert('Formulario de registro QC — pendiente de implementacion'); }
+
+// ===== Instruments =====
+async function loadInstruments() {
+  const res = await api('/api/lis/instruments');
+  if (!res?.ok) return;
+  const data = await res.json();
+  const items = data.instruments || data.items || [];
+  const tbody = document.getElementById('instBody');
+  if (!items.length) { tbody.innerHTML = '<tr><td colspan="5" class="text-slate-500 py-4 text-center">Sin equipos registrados</td></tr>'; return; }
+  tbody.innerHTML = items.map(i => `<tr class="border-b border-slate-800">
+    <td class="py-2">${i.name}</td>
+    <td class="py-2 text-slate-400">${i.model||'-'}</td>
+    <td class="py-2 text-slate-400">${i.serial_number||'-'}</td>
+    <td class="py-2 text-slate-400">${i.location||'-'}</td>
+    <td class="py-2">${i.is_active!==false?'<span class="text-green-400 text-xs">Activo</span>':'<span class="text-red-400 text-xs">Inactivo</span>'}</td>
+  </tr>`).join('');
+}
+function showNewInstrument() { alert('Formulario de nuevo equipo — pendiente de implementacion'); }
+
+// ===== New Sample =====
+function showNewSample() {
+  document.getElementById('newSampleModal').classList.remove('hidden');
+  document.getElementById('newSampleModal').classList.add('flex');
+  document.getElementById('nsError').classList.add('hidden');
+}
+function closeNewSample() {
+  document.getElementById('newSampleModal').classList.add('hidden');
+  document.getElementById('newSampleModal').classList.remove('flex');
+}
+async function createSample(e) {
+  e.preventDefault();
+  const body = {
+    patient_document: document.getElementById('ns_patient_doc').value.trim(),
+    patient_name: document.getElementById('ns_patient_name').value.trim(),
+    sample_type: document.getElementById('ns_sample_type').value,
+    notes: document.getElementById('ns_notes').value.trim() || undefined
+  };
+  const res = await api('/api/lis/samples', {method:'POST', body: JSON.stringify(body)});
+  if (!res) return;
+  const data = await res.json();
+  if (!res.ok) {
+    document.getElementById('nsError').textContent = data.error || 'Error al crear muestra';
+    document.getElementById('nsError').classList.remove('hidden');
+    return;
+  }
+  closeNewSample();
+  loadWorklist();
+}
+
+// Initial load
 loadWorklist();
 </script>
 {% endblock %}
