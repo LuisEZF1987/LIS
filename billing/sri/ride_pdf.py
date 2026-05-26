@@ -1,202 +1,367 @@
+#!/usr/bin/env python3
 """
-RIDE PDF Generator — Representacion Impresa del Documento Electronico.
-Generates the official printed format required by SRI Ecuador.
+SRI Ecuador — RIDE PDF Generator.
+
+RIDE = Representacion Impresa del Documento Electronico.
+
+Generates a PDF for SRI-authorized electronic invoices and credit notes,
+including the clave de acceso as a Code128 barcode.
 """
 import io
 import logging
 from datetime import datetime
 
-log = logging.getLogger("sri.ride")
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch, mm
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+from reportlab.lib import colors
+from reportlab.platypus import (
+    SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image,
+)
+from reportlab.graphics.barcode.code128 import Code128
+
+log = logging.getLogger("sri.ride_pdf")
 
 
 def generate_ride(invoice_data: dict, sri_data: dict, config: dict) -> bytes:
-    """Generate RIDE PDF for an authorized electronic invoice.
+    """
+    Generate RIDE PDF for an SRI-authorized document.
 
-    Args:
-        invoice_data: Invoice details (number, patient, lines, totals)
-        sri_data: SRI authorization data (clave_acceso, autorizacion, fecha)
-        config: Institution config (ruc, razon_social, direccion, etc.)
+    Parameters:
+        invoice_data: Invoice dict with keys:
+            invoice_number, invoice_type, patient_document, patient_name,
+            patient_address, patient_email, patient_phone,
+            subtotal_0, subtotal_iva, iva_amount, total,
+            created_at, notes, lines (list of line dicts)
+        sri_data: SRI document dict with keys:
+            clave_acceso, numero_autorizacion, fecha_autorizacion,
+            estado_autorizacion
+        config: Company config dict with keys:
+            razon_social, nombre_comercial, ruc, direccion_matriz,
+            obligado_contabilidad, ambiente
 
     Returns:
         PDF bytes
     """
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.units import mm
-    from reportlab.lib import colors
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4,
-                            leftMargin=15 * mm, rightMargin=15 * mm,
-                            topMargin=15 * mm, bottomMargin=15 * mm)
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=letter,
+        leftMargin=0.5 * inch,
+        rightMargin=0.5 * inch,
+        topMargin=0.4 * inch,
+        bottomMargin=0.4 * inch,
+    )
+
     styles = getSampleStyleSheet()
-    story = []
+    elements = []
 
     # Styles
-    title_style = ParagraphStyle("Title", parent=styles["Heading1"], fontSize=12,
-                                  spaceAfter=2 * mm, textColor=colors.HexColor("#1e3a5f"))
-    normal = ParagraphStyle("Normal", parent=styles["Normal"], fontSize=8, leading=10)
-    bold = ParagraphStyle("Bold", parent=styles["Normal"], fontSize=8, leading=10,
-                           fontName="Helvetica-Bold")
-    small = ParagraphStyle("Small", parent=styles["Normal"], fontSize=7, leading=9,
-                            textColor=colors.grey)
+    style_title = ParagraphStyle(
+        "ride_title", parent=styles["Title"],
+        fontSize=14, spaceAfter=2, spaceBefore=0,
+    )
+    style_subtitle = ParagraphStyle(
+        "ride_subtitle", parent=styles["Normal"],
+        fontSize=10, spaceAfter=2,
+    )
+    style_normal = ParagraphStyle(
+        "ride_normal", parent=styles["Normal"],
+        fontSize=8, spaceAfter=1,
+    )
+    style_bold = ParagraphStyle(
+        "ride_bold", parent=styles["Normal"],
+        fontSize=8, spaceAfter=1, fontName="Helvetica-Bold",
+    )
+    style_center = ParagraphStyle(
+        "ride_center", parent=styles["Normal"],
+        fontSize=8, alignment=TA_CENTER,
+    )
+    style_right = ParagraphStyle(
+        "ride_right", parent=styles["Normal"],
+        fontSize=8, alignment=TA_RIGHT,
+    )
+    style_small = ParagraphStyle(
+        "ride_small", parent=styles["Normal"],
+        fontSize=7, textColor=colors.HexColor("#4b5563"),
+    )
 
-    # --- Header: two columns ---
-    ruc = config.get("ruc", "")
+    # ===================================================================
+    # Header: Two-column layout (Company info | SRI document info)
+    # ===================================================================
     razon_social = config.get("razon_social", "")
-    nombre_comercial = config.get("nombre_comercial", razon_social)
+    nombre_comercial = config.get("nombre_comercial", "")
+    ruc = config.get("ruc", "")
     direccion = config.get("direccion_matriz", "")
+    obligado = config.get("obligado_contabilidad", "SI")
+
+    # Left column: company info
+    left_info = f"""<b>{razon_social}</b><br/>"""
+    if nombre_comercial and nombre_comercial != razon_social:
+        left_info += f"{nombre_comercial}<br/>"
+    left_info += f"""<b>RUC:</b> {ruc}<br/>
+<b>Dir. Matriz:</b> {direccion}<br/>
+<b>Obligado a llevar contabilidad:</b> {obligado}"""
+
+    # Right column: SRI document info
+    inv_type = invoice_data.get("invoice_type", "out")
+    doc_label = "NOTA DE CREDITO" if inv_type == "credit_note" else "FACTURA"
+    inv_number = invoice_data.get("invoice_number", "")
+
     clave_acceso = sri_data.get("clave_acceso", "")
-    num_autorizacion = sri_data.get("numero_autorizacion", clave_acceso)
+    num_autorizacion = sri_data.get("numero_autorizacion", "")
     fecha_autorizacion = sri_data.get("fecha_autorizacion", "")
-    invoice_number = invoice_data.get("invoice_number", "")
+    ambiente_str = "PRODUCCION" if str(config.get("ambiente", "1")) == "2" else "PRUEBAS"
 
-    # Left column: institution info
-    left_info = f"""<b>{razon_social}</b><br/>
-    {nombre_comercial}<br/>
-    Dir: {direccion}<br/>
-    RUC: {ruc}<br/>
-    Obligado a llevar contabilidad: {config.get('obligado_contabilidad', 'NO')}"""
+    # Display SRI-format number (remove FAC- prefix if present)
+    sri_number = inv_number
+    if sri_number.startswith("FAC-"):
+        sri_number = sri_number[4:]
 
-    # Right column: invoice info
-    right_info = f"""<b>FACTURA</b><br/>
-    No. {invoice_number}<br/>
-    Ambiente: {'PRODUCCION' if config.get('ambiente', 1) == 2 else 'PRUEBAS'}<br/>
-    Emision: NORMAL<br/>
-    Clave de Acceso:"""
+    right_info = f"""<b>{doc_label}</b><br/>
+<b>No.</b> {sri_number}<br/>
+<b>Ambiente:</b> {ambiente_str}<br/>
+<b>Emision:</b> NORMAL<br/>
+<b>Clave de Acceso:</b>"""
 
-    header_data = [[Paragraph(left_info, normal), Paragraph(right_info, normal)]]
-    header_table = Table(header_data, colWidths=[90 * mm, 90 * mm])
+    header_data = [[Paragraph(left_info, style_normal), Paragraph(right_info, style_normal)]]
+    header_table = Table(header_data, colWidths=[3.5 * inch, 3.5 * inch])
     header_table.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("BOX", (0, 0), (-1, -1), 0.5, colors.grey),
-        ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.grey),
         ("LEFTPADDING", (0, 0), (-1, -1), 4),
         ("RIGHTPADDING", (0, 0), (-1, -1), 4),
         ("TOPPADDING", (0, 0), (-1, -1), 4),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("BOX", (0, 0), (0, 0), 0.5, colors.HexColor("#94a3b8")),
+        ("BOX", (1, 0), (1, 0), 0.5, colors.HexColor("#94a3b8")),
     ]))
-    story.append(header_table)
-    story.append(Spacer(1, 2 * mm))
+    elements.append(header_table)
+    elements.append(Spacer(1, 6))
 
-    # Barcode (clave de acceso)
+    # ===================================================================
+    # Clave de acceso barcode
+    # ===================================================================
     if clave_acceso:
+        elements.append(
+            Paragraph("<b>CLAVE DE ACCESO</b>", style_center)
+        )
         try:
-            import barcode
-            from barcode.writer import ImageWriter
-            code128 = barcode.get("code128", clave_acceso, writer=ImageWriter())
-            barcode_buf = io.BytesIO()
-            code128.write(barcode_buf, options={"write_text": False, "module_height": 8})
-            barcode_buf.seek(0)
-            from reportlab.platypus import Image
-            story.append(Image(barcode_buf, width=170 * mm, height=12 * mm))
-        except ImportError:
-            story.append(Paragraph(f"Clave de Acceso: {clave_acceso}", small))
-        story.append(Paragraph(clave_acceso, small))
-        story.append(Spacer(1, 2 * mm))
+            barcode = Code128(clave_acceso, barWidth=0.8, barHeight=30)
+            bc_table = Table(
+                [[barcode]],
+                colWidths=[7 * inch],
+            )
+            bc_table.setStyle(TableStyle([
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ]))
+            elements.append(bc_table)
+        except Exception as e:
+            log.warning("Failed to generate barcode: %s", e)
 
-    # Authorization
+        elements.append(
+            Paragraph(f"<font size='6'>{clave_acceso}</font>", style_center)
+        )
+        elements.append(Spacer(1, 4))
+
+    # Authorization info
     if num_autorizacion:
-        auth_info = f"No. Autorizacion: {num_autorizacion}    Fecha: {fecha_autorizacion}"
-        story.append(Paragraph(auth_info, small))
-        story.append(Spacer(1, 3 * mm))
+        elements.append(
+            Paragraph(
+                f"<b>No. Autorizacion:</b> {num_autorizacion}"
+                f"    <b>Fecha:</b> {fecha_autorizacion}",
+                style_small,
+            )
+        )
+    elements.append(Spacer(1, 8))
 
-    # --- Patient info ---
+    # ===================================================================
+    # Buyer (patient) information
+    # ===================================================================
+    fecha_emision = invoice_data.get("created_at", "")
+    if isinstance(fecha_emision, str):
+        fecha_emision = fecha_emision[:10]
+
     patient_doc = invoice_data.get("patient_document", "")
-    patient_name = invoice_data.get("patient_name", "")
-    fecha_emision = invoice_data.get("fecha_emision", datetime.now().strftime("%d/%m/%Y"))
+    patient_name = invoice_data.get("patient_name", "CONSUMIDOR FINAL")
+    patient_addr = invoice_data.get("patient_address", "")
 
-    patient_data = [
-        [Paragraph(f"<b>Razon Social / Nombres:</b> {patient_name}", normal),
-         Paragraph(f"<b>RUC/CI:</b> {patient_doc}", normal)],
-        [Paragraph(f"<b>Fecha Emision:</b> {fecha_emision}", normal),
-         Paragraph(f"<b>Guia Remision:</b> ", normal)],
+    buyer_data = [
+        [
+            Paragraph(f"<b>Razon Social / Nombres:</b> {patient_name}", style_normal),
+            Paragraph(f"<b>Fecha Emision:</b> {fecha_emision}", style_normal),
+        ],
+        [
+            Paragraph(f"<b>Identificacion:</b> {patient_doc}", style_normal),
+            Paragraph("", style_normal),
+        ],
     ]
-    patient_table = Table(patient_data, colWidths=[120 * mm, 60 * mm])
-    patient_table.setStyle(TableStyle([
-        ("BOX", (0, 0), (-1, -1), 0.5, colors.grey),
-        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
-        ("LEFTPADDING", (0, 0), (-1, -1), 4),
-        ("TOPPADDING", (0, 0), (-1, -1), 2),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-    ]))
-    story.append(patient_table)
-    story.append(Spacer(1, 4 * mm))
-
-    # --- Detail lines ---
-    lines = invoice_data.get("lines", [])
-    detail_header = ["Cod.", "Descripcion", "Cant.", "P. Unit.", "Desc.", "Total"]
-    detail_data = [detail_header]
-    for line in lines:
-        detail_data.append([
-            line.get("code", ""),
-            line.get("description", ""),
-            str(line.get("quantity", 1)),
-            f"${line.get('unit_price', 0):.2f}",
-            f"${line.get('discount', 0):.2f}",
-            f"${line.get('line_total', 0):.2f}",
+    if patient_addr:
+        buyer_data.append([
+            Paragraph(f"<b>Direccion:</b> {patient_addr}", style_normal),
+            Paragraph("", style_normal),
         ])
 
-    detail_table = Table(detail_data, colWidths=[25 * mm, 75 * mm, 15 * mm, 22 * mm, 18 * mm, 25 * mm])
-    detail_style = [
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8edf2")),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 8),
-        ("BOX", (0, 0), (-1, -1), 0.5, colors.grey),
-        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
-        ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 3),
+    buyer_table = Table(buyer_data, colWidths=[4.5 * inch, 2.5 * inch])
+    buyer_table.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#94a3b8")),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#e2e8f0")),
         ("TOPPADDING", (0, 0), (-1, -1), 2),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    elements.append(buyer_table)
+    elements.append(Spacer(1, 8))
+
+    # ===================================================================
+    # Detail lines table
+    # ===================================================================
+    lines = invoice_data.get("lines", [])
+
+    detail_header = [
+        Paragraph("<b>Cod.</b>", style_bold),
+        Paragraph("<b>Descripcion</b>", style_bold),
+        Paragraph("<b>Cant.</b>", style_bold),
+        Paragraph("<b>P. Unit.</b>", style_bold),
+        Paragraph("<b>Desc.</b>", style_bold),
+        Paragraph("<b>P. Total</b>", style_bold),
+    ]
+    detail_data = [detail_header]
+
+    for ln in lines:
+        qty = abs(float(ln.get("quantity", 1)))
+        unit_price = float(ln.get("unit_price", 0))
+        discount = float(ln.get("discount_percent", 0))
+        line_total = abs(float(ln.get("line_total", 0)))
+        discount_amt = round(qty * unit_price * discount / 100, 2)
+
+        detail_data.append([
+            Paragraph(str(ln.get("catalog_id") or ln.get("code", "-")), style_normal),
+            Paragraph((ln.get("description", "") or "")[:80], style_normal),
+            Paragraph(f"{qty:.2f}", style_right),
+            Paragraph(f"${unit_price:.2f}", style_right),
+            Paragraph(f"${discount_amt:.2f}", style_right),
+            Paragraph(f"${line_total:.2f}", style_right),
+        ])
+
+    detail_table = Table(
+        detail_data,
+        colWidths=[0.6 * inch, 3.4 * inch, 0.6 * inch, 0.8 * inch, 0.7 * inch, 0.9 * inch],
+    )
+    detail_style = [
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+        ("ALIGN", (2, 1), (-1, -1), "RIGHT"),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING", (0, 0), (-1, -1), 3),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
     ]
     # Alternate row colors
     for i in range(1, len(detail_data)):
         if i % 2 == 0:
-            detail_style.append(("BACKGROUND", (0, i), (-1, i), colors.HexColor("#f5f7fa")))
+            detail_style.append(
+                ("BACKGROUND", (0, i), (-1, i), colors.HexColor("#f8fafc"))
+            )
     detail_table.setStyle(TableStyle(detail_style))
-    story.append(detail_table)
-    story.append(Spacer(1, 4 * mm))
+    elements.append(detail_table)
+    elements.append(Spacer(1, 8))
 
-    # --- Totals ---
-    subtotal_0 = invoice_data.get("subtotal", 0)
-    subtotal_iva = invoice_data.get("subtotal_iva", 0)
-    iva = invoice_data.get("tax_amount", 0)
-    total = invoice_data.get("total", 0)
+    # ===================================================================
+    # Totals section (SRI format)
+    # ===================================================================
+    subtotal_0 = abs(float(invoice_data.get("subtotal_0", 0)))
+    subtotal_iva = abs(float(invoice_data.get("subtotal_iva", 0)))
+    iva_amount = abs(float(invoice_data.get("iva_amount", 0)))
+    total = abs(float(invoice_data.get("total", 0)))
 
     totals_data = [
         ["SUBTOTAL 0%", f"${subtotal_0:.2f}"],
-        ["SUBTOTAL 15%", f"${subtotal_iva:.2f}"],
-        ["IVA 15%", f"${iva:.2f}"],
-        ["TOTAL", f"${total:.2f}"],
+        ["SUBTOTAL IVA%", f"${subtotal_iva:.2f}"],
+        ["SUBTOTAL SIN IMPUESTOS", f"${subtotal_0 + subtotal_iva:.2f}"],
+        ["IVA", f"${iva_amount:.2f}"],
+        ["VALOR TOTAL", f"${total:.2f}"],
     ]
-    totals_table = Table(totals_data, colWidths=[40 * mm, 30 * mm])
-    totals_table.setStyle(TableStyle([
-        ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
-        ("FONTSIZE", (0, 0), (-1, -1), 8),
-        ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
-        ("BOX", (0, 0), (-1, -1), 0.5, colors.grey),
-        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
-        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+
+    totals_inner = Table(totals_data, colWidths=[2.2 * inch, 1 * inch])
+    totals_inner.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#94a3b8")),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#e2e8f0")),
         ("TOPPADDING", (0, 0), (-1, -1), 2),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+        ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("FONTSIZE", (0, -1), (-1, -1), 10),
+        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#f1f5f9")),
     ]))
 
-    # Align totals to the right
-    wrapper_data = [["", totals_table]]
-    wrapper = Table(wrapper_data, colWidths=[110 * mm, 70 * mm])
-    wrapper.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
-    story.append(wrapper)
+    totals_wrapper = Table(
+        [["", totals_inner]],
+        colWidths=[3.8 * inch, 3.2 * inch],
+    )
+    totals_wrapper.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ]))
+    elements.append(totals_wrapper)
+    elements.append(Spacer(1, 8))
 
-    # --- Payment method ---
-    payment_method = invoice_data.get("payment_method", "")
-    if payment_method:
-        story.append(Spacer(1, 3 * mm))
-        pm_label = {"efectivo": "Efectivo", "tarjeta_debito": "Tarjeta Debito",
-                     "tarjeta_credito": "Tarjeta Credito", "transferencia": "Transferencia"
-                    }.get(payment_method, payment_method)
-        story.append(Paragraph(f"<b>Forma de Pago:</b> {pm_label} — ${total:.2f}", normal))
+    # ===================================================================
+    # Payment method
+    # ===================================================================
+    elements.append(Paragraph("<b>Forma de Pago:</b>", style_bold))
+    payment_table = Table(
+        [
+            [
+                Paragraph("<b>Forma de Pago</b>", style_bold),
+                Paragraph("<b>Valor</b>", style_bold),
+            ],
+            [
+                Paragraph("Sin utilizacion del sistema financiero", style_normal),
+                Paragraph(f"${total:.2f}", style_right),
+            ],
+        ],
+        colWidths=[5.5 * inch, 1.5 * inch],
+    )
+    payment_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#334155")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]))
+    elements.append(payment_table)
+    elements.append(Spacer(1, 8))
+
+    # ===================================================================
+    # Additional info / Notes
+    # ===================================================================
+    notes = invoice_data.get("notes", "")
+    if notes:
+        elements.append(Paragraph("<b>Informacion Adicional:</b>", style_bold))
+        elements.append(Paragraph(notes, style_normal))
+        elements.append(Spacer(1, 4))
+
+    # ===================================================================
+    # Footer
+    # ===================================================================
+    elements.append(Spacer(1, 12))
+    elements.append(
+        Paragraph(
+            "Documento generado electronicamente - RIDE",
+            ParagraphStyle(
+                "footer", parent=style_center,
+                fontSize=7, textColor=colors.HexColor("#6b7280"),
+            ),
+        )
+    )
 
     # Build PDF
-    doc.build(story)
-    return buf.getvalue()
+    doc.build(elements)
+    buf.seek(0)
+    return buf.read()
