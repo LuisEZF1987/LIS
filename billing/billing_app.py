@@ -1175,122 +1175,321 @@ def invoice_pdf(inv_id):
 
 
 def _generate_simple_pdf(inv, lines):
-    """Generate a simple invoice PDF using reportlab."""
+    """Generate a professional invoice PDF styled for Ecuador labs."""
     from reportlab.lib.pagesizes import letter
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.units import inch
-    from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+    from reportlab.lib.units import inch, mm
+    from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
     from reportlab.lib import colors
     from reportlab.platypus import (
-        SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer,
+        SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image,
     )
+
+    # Colors
+    PRIMARY = colors.HexColor("#0f172a")
+    ACCENT = colors.HexColor("#1e40af")
+    LIGHT_BG = colors.HexColor("#f8fafc")
+    BORDER = colors.HexColor("#cbd5e1")
+    DARK_TEXT = colors.HexColor("#1e293b")
+    MUTED = colors.HexColor("#64748b")
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
         buf, pagesize=letter,
-        leftMargin=0.6 * inch, rightMargin=0.6 * inch,
-        topMargin=0.5 * inch, bottomMargin=0.5 * inch,
+        leftMargin=0.5 * inch, rightMargin=0.5 * inch,
+        topMargin=0.4 * inch, bottomMargin=0.5 * inch,
     )
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        "title", parent=styles["Title"], fontSize=16, spaceAfter=6,
-    )
-    normal = styles["Normal"]
+
+    s_company = ParagraphStyle("company", parent=styles["Normal"],
+        fontSize=13, fontName="Helvetica-Bold", textColor=PRIMARY,
+        spaceAfter=1)
+    s_company_detail = ParagraphStyle("company_detail", parent=styles["Normal"],
+        fontSize=8, textColor=MUTED, spaceAfter=1)
+    s_doc_title = ParagraphStyle("doc_title", parent=styles["Normal"],
+        fontSize=12, fontName="Helvetica-Bold", textColor=ACCENT,
+        alignment=TA_RIGHT, spaceAfter=2)
+    s_doc_num = ParagraphStyle("doc_num", parent=styles["Normal"],
+        fontSize=10, fontName="Helvetica-Bold", alignment=TA_RIGHT,
+        spaceAfter=1)
+    s_doc_detail = ParagraphStyle("doc_detail", parent=styles["Normal"],
+        fontSize=8, textColor=MUTED, alignment=TA_RIGHT, spaceAfter=1)
+    s_label = ParagraphStyle("label", parent=styles["Normal"],
+        fontSize=8, fontName="Helvetica-Bold", textColor=MUTED)
+    s_value = ParagraphStyle("value", parent=styles["Normal"],
+        fontSize=9, textColor=DARK_TEXT)
+    s_section = ParagraphStyle("section", parent=styles["Normal"],
+        fontSize=9, fontName="Helvetica-Bold", textColor=ACCENT,
+        spaceBefore=8, spaceAfter=4)
+    s_footer = ParagraphStyle("footer", parent=styles["Normal"],
+        fontSize=7, textColor=MUTED, alignment=TA_CENTER)
+    s_right = ParagraphStyle("right", parent=styles["Normal"],
+        fontSize=8, alignment=TA_RIGHT)
+    s_cell = ParagraphStyle("cell", parent=styles["Normal"], fontSize=8)
+    s_cell_bold = ParagraphStyle("cell_bold", parent=styles["Normal"],
+        fontSize=8, fontName="Helvetica-Bold")
+    s_total_label = ParagraphStyle("total_label", parent=styles["Normal"],
+        fontSize=9, fontName="Helvetica-Bold", textColor=DARK_TEXT,
+        alignment=TA_RIGHT)
+    s_total_value = ParagraphStyle("total_value", parent=styles["Normal"],
+        fontSize=9, alignment=TA_RIGHT)
+    s_grand_total_label = ParagraphStyle("gt_label", parent=styles["Normal"],
+        fontSize=11, fontName="Helvetica-Bold", textColor=PRIMARY,
+        alignment=TA_RIGHT)
+    s_grand_total = ParagraphStyle("gt_value", parent=styles["Normal"],
+        fontSize=12, fontName="Helvetica-Bold", textColor=ACCENT,
+        alignment=TA_RIGHT)
 
     elements = []
 
-    # Header
-    company_name = SRI_RAZON_SOCIAL or "Dimed Laboratorio"
-    elements.append(Paragraph(company_name, title_style))
-    if SRI_RUC:
-        elements.append(Paragraph(f"RUC: {SRI_RUC}", normal))
-    if SRI_DIRECCION_MATRIZ:
-        elements.append(Paragraph(SRI_DIRECCION_MATRIZ, normal))
+    company_name = SRI_RAZON_SOCIAL or "Laboratorio"
+    company_ruc = SRI_RUC or ""
+    company_addr = SRI_DIRECCION_MATRIZ or ""
+    company_trade = SRI_NOMBRE_COMERCIAL or ""
+    obligado = SRI_OBLIGADO_CONTABILIDAD or "SI"
 
-    inv_type_label = {
-        "out": "FACTURA", "credit_note": "NOTA DE CREDITO",
-    }
-    elements.append(Paragraph(
-        f"<b>{inv_type_label.get(inv.get('invoice_type', 'out'), 'FACTURA')}</b> "
-        f"N. {inv.get('invoice_number') or 'BORRADOR'}",
-        ParagraphStyle("sub", parent=normal, fontSize=12, spaceAfter=12),
-    ))
+    # Logo
+    logo_path = os.environ.get("LOGO_PATH", "/certs/logo.png")
+    has_logo = os.path.isfile(logo_path)
 
-    elements.append(Spacer(1, 8))
+    inv_type = inv.get("invoice_type", "out")
+    doc_label = "NOTA DE CREDITO" if inv_type == "credit_note" else "FACTURA"
+    inv_number = inv.get("invoice_number") or "BORRADOR"
+    sri_number = inv_number
+    if sri_number.startswith("FAC-"):
+        sri_number = sri_number[4:]
 
-    # Patient info
-    info_data = [
-        ["Paciente:", inv.get("patient_name", ""),
-         "Fecha:", str(inv.get("created_at", ""))[:10]],
-        ["Cedula/RUC:", inv.get("patient_document", ""),
-         "Estado:", (inv.get("status") or "").upper()],
-        ["Direccion:", inv.get("patient_address", ""),
-         "Moneda:", "USD"],
+    fecha = str(inv.get("created_at", ""))[:10]
+    ambiente = "PRODUCCION" if str(os.environ.get("SRI_AMBIENTE", "1")) == "2" else "PRUEBAS"
+    estab = inv.get("establecimiento", "001")
+    pto = inv.get("punto_emision", "001")
+
+    # ===== HEADER: Logo + Company | Document =====
+    company_parts = [f"<b>{company_name}</b>"]
+    if company_trade and company_trade != company_name:
+        company_parts.append(company_trade)
+    if company_ruc:
+        company_parts.append(f"<b>RUC:</b> {company_ruc}")
+    if company_addr:
+        company_parts.append(f"<b>Dir. Matriz:</b> {company_addr}")
+    company_parts.append(f"<b>Obligado a llevar contabilidad:</b> {obligado}")
+    company_parts.append(f"<b>Establecimiento:</b> {estab} | <b>Pto. Emision:</b> {pto}")
+    company_html = "<br/>".join(company_parts)
+
+    right_parts = [
+        f"<b><font size='12' color='#1e40af'>{doc_label}</font></b>",
+        f"<b>No.</b> {sri_number}",
+        f"<b>Ambiente:</b> {ambiente}",
+        f"<b>Emision:</b> NORMAL",
+        f"<b>Fecha:</b> {fecha}",
     ]
-    info_table = Table(info_data, colWidths=[72, 200, 60, 150])
-    info_table.setStyle(TableStyle([
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-        ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-    ]))
-    elements.append(info_table)
-    elements.append(Spacer(1, 12))
+    right_html = "<br/>".join(right_parts)
 
-    # Lines
-    header = ["#", "Descripcion", "Cant", "P.Unit", "Desc%", "Subtotal"]
-    table_data = [header]
-    for i, ln in enumerate(lines, 1):
-        lt = ln.get("line_total", 0)
-        table_data.append([
-            str(i),
-            (ln.get("description") or "")[:60],
-            f"{ln.get('quantity', 1):.0f}",
-            f"${ln.get('unit_price', 0):.2f}",
-            f"{ln.get('discount_percent', 0):.0f}%",
-            f"${lt:.2f}",
+    if has_logo:
+        logo_img = Image(logo_path, width=1.1 * inch, height=0.7 * inch)
+        logo_img.hAlign = "LEFT"
+        left_cell = Table(
+            [[logo_img, Paragraph(company_html, ParagraphStyle("lh", parent=s_cell,
+                fontSize=8, leading=12))]],
+            colWidths=[1.2 * inch, 2.4 * inch],
+        )
+        left_cell.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ]))
+    else:
+        left_cell = Paragraph(company_html, ParagraphStyle("lh", parent=s_cell,
+            fontSize=8, leading=12))
+
+    header_data = [[
+        left_cell,
+        Paragraph(right_html, ParagraphStyle("rh", parent=s_cell,
+            fontSize=8, leading=12, alignment=TA_RIGHT)),
+    ]]
+    header_table = Table(header_data, colWidths=[3.7 * inch, 3.3 * inch])
+    header_table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("BOX", (0, 0), (0, 0), 0.75, ACCENT),
+        ("BOX", (1, 0), (1, 0), 0.75, ACCENT),
+        ("BACKGROUND", (1, 0), (1, 0), colors.HexColor("#f0f4ff")),
+    ]))
+    elements.append(header_table)
+    elements.append(Spacer(1, 10))
+
+    # ===== BUYER INFO =====
+    pat_name = inv.get("patient_name", "CONSUMIDOR FINAL")
+    pat_doc = inv.get("patient_document", "9999999999999")
+    pat_addr = inv.get("patient_address", "")
+    pat_email = inv.get("patient_email", "")
+    pat_phone = inv.get("patient_phone", "")
+
+    buyer_rows = [
+        [Paragraph("<b>Razon Social / Nombres:</b>", s_cell),
+         Paragraph(pat_name, s_value),
+         Paragraph("<b>Identificacion:</b>", s_cell),
+         Paragraph(pat_doc, s_value)],
+    ]
+    if pat_addr or pat_phone:
+        buyer_rows.append([
+            Paragraph("<b>Direccion:</b>", s_cell),
+            Paragraph(pat_addr or "-", s_cell),
+            Paragraph("<b>Telefono:</b>", s_cell),
+            Paragraph(pat_phone or "-", s_cell),
+        ])
+    if pat_email:
+        buyer_rows.append([
+            Paragraph("<b>Email:</b>", s_cell),
+            Paragraph(pat_email, s_cell),
+            Paragraph("", s_cell),
+            Paragraph("", s_cell),
         ])
 
-    t = Table(table_data, colWidths=[25, 250, 40, 60, 45, 60])
-    t.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 8),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-        ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1),
-         [colors.white, colors.HexColor("#f1f5f9")]),
+    buyer_table = Table(buyer_rows,
+        colWidths=[1.2 * inch, 2.5 * inch, 1 * inch, 2.3 * inch])
+    buyer_table.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 0.5, BORDER),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#e2e8f0")),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("BACKGROUND", (0, 0), (-1, -1), LIGHT_BG),
     ]))
-    elements.append(t)
-    elements.append(Spacer(1, 12))
+    elements.append(buyer_table)
+    elements.append(Spacer(1, 10))
 
-    # Totals
-    subtotal_0 = inv.get("subtotal_0", 0)
-    subtotal_iva = inv.get("subtotal_iva", 0)
-    iva_amount = inv.get("iva_amount", 0)
-    total = inv.get("total", 0)
-
-    totals_data = [
-        ["", "", "Subtotal 0%:", f"${subtotal_0:.2f}"],
-        ["", "", "Subtotal IVA:", f"${subtotal_iva:.2f}"],
-        ["", "", "IVA:", f"${iva_amount:.2f}"],
-        ["", "", "TOTAL:", f"${total:.2f}"],
+    # ===== DETAIL LINES =====
+    detail_header = [
+        Paragraph("<b>Cod.</b>", s_cell_bold),
+        Paragraph("<b>Descripcion</b>", s_cell_bold),
+        Paragraph("<b>Cant.</b>", s_cell_bold),
+        Paragraph("<b>P. Unitario</b>", s_cell_bold),
+        Paragraph("<b>Descuento</b>", s_cell_bold),
+        Paragraph("<b>P. Total</b>", s_cell_bold),
     ]
-    tt = Table(totals_data, colWidths=[200, 100, 80, 80])
-    tt.setStyle(TableStyle([
-        ("FONTNAME", (2, -1), (-1, -1), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 10),
-        ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
-        ("LINEABOVE", (2, -1), (-1, -1), 1, colors.black),
-    ]))
-    elements.append(tt)
+    detail_data = [detail_header]
 
+    for ln in lines:
+        qty = float(ln.get("quantity", 1))
+        up = float(ln.get("unit_price", 0))
+        disc = float(ln.get("discount_percent", 0))
+        lt = float(ln.get("line_total", 0))
+        disc_amt = round(qty * up * disc / 100, 2)
+
+        detail_data.append([
+            Paragraph(str(ln.get("catalog_id") or ln.get("code", "-")), s_cell),
+            Paragraph((ln.get("description") or "")[:70], s_cell),
+            Paragraph(f"{qty:.2f}", s_right),
+            Paragraph(f"${up:.2f}", s_right),
+            Paragraph(f"${disc_amt:.2f}", s_right),
+            Paragraph(f"${lt:.2f}", s_right),
+        ])
+
+    detail_table = Table(detail_data,
+        colWidths=[0.6 * inch, 3.2 * inch, 0.55 * inch, 0.8 * inch, 0.75 * inch, 0.8 * inch])
+    detail_style = [
+        ("BACKGROUND", (0, 0), (-1, 0), PRIMARY),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("GRID", (0, 0), (-1, -1), 0.5, BORDER),
+        ("ALIGN", (2, 1), (-1, -1), "RIGHT"),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+    ]
+    for i in range(1, len(detail_data)):
+        if i % 2 == 0:
+            detail_style.append(
+                ("BACKGROUND", (0, i), (-1, i), LIGHT_BG))
+    detail_table.setStyle(TableStyle(detail_style))
+    elements.append(detail_table)
+    elements.append(Spacer(1, 8))
+
+    # ===== TOTALS =====
+    subtotal_0 = float(inv.get("subtotal_0") or inv.get("subtotal") or 0)
+    subtotal_iva = float(inv.get("subtotal_iva", 0) or 0)
+    iva_amount = float(inv.get("iva_amount", 0) or 0)
+    total = float(inv.get("total", 0) or 0)
+
+    totals_rows = [
+        [Paragraph("SUBTOTAL 0%", s_total_label),
+         Paragraph(f"${subtotal_0:.2f}", s_total_value)],
+        [Paragraph("SUBTOTAL IVA%", s_total_label),
+         Paragraph(f"${subtotal_iva:.2f}", s_total_value)],
+        [Paragraph("SUBTOTAL SIN IMPUESTOS", s_total_label),
+         Paragraph(f"${subtotal_0 + subtotal_iva:.2f}", s_total_value)],
+        [Paragraph("IVA", s_total_label),
+         Paragraph(f"${iva_amount:.2f}", s_total_value)],
+        [Paragraph("VALOR TOTAL", s_grand_total_label),
+         Paragraph(f"${total:.2f}", s_grand_total)],
+    ]
+
+    totals_inner = Table(totals_rows, colWidths=[2.2 * inch, 1 * inch])
+    totals_inner.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 0.5, BORDER),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#e2e8f0")),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#eff6ff")),
+        ("LINEABOVE", (0, -1), (-1, -1), 1, ACCENT),
+    ]))
+
+    totals_wrapper = Table(
+        [["", totals_inner]],
+        colWidths=[3.8 * inch, 3.2 * inch])
+    totals_wrapper.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ]))
+    elements.append(totals_wrapper)
+    elements.append(Spacer(1, 10))
+
+    # ===== PAYMENT METHOD =====
+    source_labels = {
+        "efectivo": "Efectivo", "tarjeta_debito": "Tarjeta de Debito",
+        "tarjeta_credito": "Tarjeta de Credito", "transferencia": "Transferencia Bancaria",
+    }
+    status = inv.get("status", "draft")
+    if status == "paid":
+        pay_label = "Sin utilizacion del sistema financiero"
+    else:
+        pay_label = "Pendiente de cobro"
+
+    pay_data = [
+        [Paragraph("<b>Forma de Pago</b>", s_cell_bold),
+         Paragraph("<b>Valor</b>", ParagraphStyle("phb", parent=s_cell_bold, alignment=TA_RIGHT))],
+        [Paragraph(pay_label, s_cell),
+         Paragraph(f"${total:.2f}", s_right)],
+    ]
+    pay_table = Table(pay_data, colWidths=[5.5 * inch, 1.5 * inch])
+    pay_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#334155")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("GRID", (0, 0), (-1, -1), 0.5, BORDER),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(pay_table)
+
+    # ===== NOTES =====
     if inv.get("notes"):
-        elements.append(Spacer(1, 12))
-        elements.append(Paragraph(f"<b>Notas:</b> {inv['notes']}", normal))
+        elements.append(Spacer(1, 8))
+        elements.append(Paragraph("<b>Informacion Adicional:</b>", s_cell_bold))
+        elements.append(Paragraph(inv["notes"], s_cell))
+
+    # ===== FOOTER =====
+    elements.append(Spacer(1, 20))
+    elements.append(Paragraph(
+        "Documento generado electronicamente — Dimed-LIS",
+        s_footer))
 
     doc.build(elements)
     buf.seek(0)

@@ -11,6 +11,9 @@ build/
 *.p12
 *.pfx
 *.pem
+certs/*.png
+certs/*.jpg
+certs/*.p12
 venv/
 .venv/
 node_modules/

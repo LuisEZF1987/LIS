@@ -84,10 +84,10 @@ def require_auth(allowed_roles=None):
 
 erp_lis_bp = app  # alias so @erp_lis_bp.route(...) decorators still work
 
-ADMIN_ROLES = ["super_admin", "admin_sede"]
-LAB_ROLES = ADMIN_ROLES + ["laboratorista"]
+ADMIN_ROLES = ["super_admin", "admin_sede", "admin"]
+LAB_ROLES = ADMIN_ROLES + ["laboratorista", "bioquimico"]
 LAB_MED_ROLES = LAB_ROLES + ["medico", "director_medico"]
-READ_ROLES = LAB_MED_ROLES + ["enfermeria", "recepcion"]
+READ_ROLES = LAB_MED_ROLES + ["enfermeria", "recepcion", "contador"]
 
 
 def _dec(row):
@@ -819,39 +819,248 @@ def sample_pdf(sample_id):
                 WHERE r.sample_id = %s AND r.status IN ('preliminary', 'final', 'corrected')
                 ORDER BY a.category, a.name
             """, (sample_id,))
-            results = cur.fetchall()
+            results = [_dec(r) for r in cur.fetchall()]
 
-        lines = [
-            "INFORME DE RESULTADOS DE LABORATORIO",
-            "=" * 60,
-            f"Muestra: {sample['sample_code']}",
-            f"Paciente: {sample.get('patient_name', '')} ({sample['patient_document']})",
-            f"Tipo: {sample['sample_type']}",
-            f"Fecha recoleccion: {sample['collection_date']}",
-            f"Estado: {sample['status']}",
-            "",
-            f"{'Analito':<30} {'Resultado':>12} {'Unidad':>10} {'Ref':>20} {'Flag':>12}",
-            "-" * 86,
-        ]
-        current_cat = None
-        for r in results:
-            if r["category"] != current_cat:
-                current_cat = r["category"]
-                lines.append(f"\n  [{current_cat.upper()}]")
-            flag_display = "" if r["flag"] == "normal" else f"** {r['flag'].upper()} **"
-            lines.append(
-                f"  {r['analyte_name']:<28} {str(r.get('value') or ''):>12} "
-                f"{str(r.get('unit') or ''):>10} {str(r.get('reference_range_text') or ''):>20} "
-                f"{flag_display:>12}"
-            )
-        lines.extend(["", "-" * 86, "Documento generado electronicamente"])
-
-        resp = make_response("\n".join(lines))
-        resp.headers["Content-Type"] = "text/plain; charset=utf-8"
-        resp.headers["Content-Disposition"] = f"attachment; filename=lab_{sample['sample_code']}.txt"
+        pdf_bytes = _generate_lab_report_pdf(sample, results)
+        resp = make_response(pdf_bytes)
+        resp.headers["Content-Type"] = "application/pdf"
+        resp.headers["Content-Disposition"] = (
+            f"inline; filename=lab_{sample['sample_code']}.pdf"
+        )
         return resp
     finally:
         put_db(conn)
+
+
+def _generate_lab_report_pdf(sample, results):
+    """Generate a professional lab results PDF with logo, colors, and flags."""
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+    from reportlab.lib import colors
+    from reportlab.platypus import (
+        SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image,
+    )
+
+    PRIMARY = colors.HexColor("#0f172a")
+    ACCENT = colors.HexColor("#1e40af")
+    LIGHT_BG = colors.HexColor("#f8fafc")
+    BORDER = colors.HexColor("#cbd5e1")
+    DARK_TEXT = colors.HexColor("#1e293b")
+    MUTED = colors.HexColor("#64748b")
+    FLAG_HIGH = colors.HexColor("#dc2626")
+    FLAG_LOW = colors.HexColor("#2563eb")
+    FLAG_CRIT = colors.HexColor("#991b1b")
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=letter,
+        leftMargin=0.5 * inch, rightMargin=0.5 * inch,
+        topMargin=0.4 * inch, bottomMargin=0.5 * inch,
+    )
+    styles = getSampleStyleSheet()
+
+    s_cell = ParagraphStyle("cell", parent=styles["Normal"], fontSize=8)
+    s_cell_bold = ParagraphStyle("cell_bold", parent=styles["Normal"],
+        fontSize=8, fontName="Helvetica-Bold")
+    s_right = ParagraphStyle("right", parent=styles["Normal"],
+        fontSize=8, alignment=TA_RIGHT)
+    s_footer = ParagraphStyle("footer", parent=styles["Normal"],
+        fontSize=7, textColor=MUTED, alignment=TA_CENTER)
+
+    elements = []
+    inst_name = os.environ.get("INSTITUTION_NAME", "Laboratorio")
+    inst_ruc = os.environ.get("INSTITUTION_RUC", "")
+    inst_addr = os.environ.get("INSTITUTION_ADDRESS", "")
+    inst_phone = os.environ.get("INSTITUTION_PHONE", "")
+    logo_path = os.environ.get("LOGO_PATH", "/certs/logo.png")
+    has_logo = os.path.isfile(logo_path)
+
+    # ===== HEADER =====
+    info_parts = [f"<b>{inst_name}</b>"]
+    if inst_ruc:
+        info_parts.append(f"<b>RUC:</b> {inst_ruc}")
+    if inst_addr:
+        info_parts.append(inst_addr)
+    if inst_phone:
+        info_parts.append(f"Tel: {inst_phone}")
+    info_html = "<br/>".join(info_parts)
+
+    title_html = (
+        "<b><font size='12' color='#1e40af'>INFORME DE RESULTADOS</font></b>"
+        "<br/><font size='8' color='#64748b'>Laboratorio Clinico</font>"
+    )
+
+    if has_logo:
+        logo_img = Image(logo_path, width=1.1 * inch, height=0.7 * inch)
+        logo_img.hAlign = "LEFT"
+        left_cell = Table(
+            [[logo_img, Paragraph(info_html, ParagraphStyle("lh", parent=s_cell,
+                fontSize=8, leading=12))]],
+            colWidths=[1.2 * inch, 2.4 * inch],
+        )
+        left_cell.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ]))
+    else:
+        left_cell = Paragraph(info_html, ParagraphStyle("lh", parent=s_cell,
+            fontSize=8, leading=12))
+
+    header_data = [[
+        left_cell,
+        Paragraph(title_html, ParagraphStyle("rh", parent=s_cell,
+            fontSize=8, leading=12, alignment=TA_RIGHT)),
+    ]]
+    header_table = Table(header_data, colWidths=[3.7 * inch, 3.3 * inch])
+    header_table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+        ("BOX", (0, 0), (0, 0), 0.75, ACCENT),
+        ("BOX", (1, 0), (1, 0), 0.75, ACCENT),
+        ("BACKGROUND", (1, 0), (1, 0), colors.HexColor("#f0f4ff")),
+    ]))
+    elements.append(header_table)
+    elements.append(Spacer(1, 10))
+
+    # ===== PATIENT / SAMPLE INFO =====
+    collection_date = str(sample.get("collection_date") or "")[:10]
+    status_labels = {
+        "registered": "Registrada", "received": "Recibida",
+        "in_progress": "En Proceso", "completed": "Completada",
+        "validated": "Validada",
+    }
+    status_display = status_labels.get(sample.get("status", ""), sample.get("status", ""))
+
+    patient_rows = [
+        [Paragraph("<b>Paciente:</b>", s_cell),
+         Paragraph(sample.get("patient_name", ""), s_cell),
+         Paragraph("<b>Identificacion:</b>", s_cell),
+         Paragraph(sample.get("patient_document", ""), s_cell)],
+        [Paragraph("<b>Muestra:</b>", s_cell),
+         Paragraph(sample.get("sample_code", ""), s_cell),
+         Paragraph("<b>Tipo:</b>", s_cell),
+         Paragraph(sample.get("sample_type", ""), s_cell)],
+        [Paragraph("<b>Fecha Recoleccion:</b>", s_cell),
+         Paragraph(collection_date, s_cell),
+         Paragraph("<b>Estado:</b>", s_cell),
+         Paragraph(status_display, s_cell)],
+    ]
+    patient_table = Table(patient_rows,
+        colWidths=[1.2 * inch, 2.5 * inch, 1.0 * inch, 2.3 * inch])
+    patient_table.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 0.5, BORDER),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#e2e8f0")),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("BACKGROUND", (0, 0), (-1, -1), LIGHT_BG),
+    ]))
+    elements.append(patient_table)
+    elements.append(Spacer(1, 12))
+
+    # ===== RESULTS TABLE (grouped by category) =====
+    current_cat = None
+    detail_header = [
+        Paragraph("<b>Analito</b>", s_cell_bold),
+        Paragraph("<b>Resultado</b>", s_cell_bold),
+        Paragraph("<b>Unidad</b>", s_cell_bold),
+        Paragraph("<b>Rango Referencia</b>", s_cell_bold),
+        Paragraph("<b>Flag</b>", s_cell_bold),
+    ]
+    detail_data = [detail_header]
+
+    for r in results:
+        cat = r.get("category", "General")
+        if cat != current_cat:
+            current_cat = cat
+            detail_data.append([
+                Paragraph(f"<b>{cat.upper()}</b>", ParagraphStyle("cat", parent=s_cell,
+                    fontSize=8, fontName="Helvetica-Bold", textColor=ACCENT)),
+                "", "", "", "",
+            ])
+
+        flag = r.get("flag", "normal")
+        val_str = str(r.get("value") or "")
+        if flag == "high":
+            val_para = Paragraph(f"<b><font color='#dc2626'>{val_str}</font></b>", s_cell)
+            flag_para = Paragraph("<font color='#dc2626'><b>ALTO</b></font>", s_cell)
+        elif flag == "low":
+            val_para = Paragraph(f"<b><font color='#2563eb'>{val_str}</font></b>", s_cell)
+            flag_para = Paragraph("<font color='#2563eb'><b>BAJO</b></font>", s_cell)
+        elif flag in ("critical_high", "critical_low", "critical"):
+            label = "CRITICO ALTO" if flag == "critical_high" else (
+                "CRITICO BAJO" if flag == "critical_low" else "CRITICO")
+            val_para = Paragraph(f"<b><font color='#991b1b'>{val_str}</font></b>", s_cell)
+            flag_para = Paragraph(f"<font color='#991b1b'><b>{label}</b></font>", s_cell)
+        elif flag == "abnormal":
+            val_para = Paragraph(f"<b><font color='#d97706'>{val_str}</font></b>", s_cell)
+            flag_para = Paragraph("<font color='#d97706'><b>ANORMAL</b></font>", s_cell)
+        else:
+            val_para = Paragraph(val_str, s_cell)
+            flag_para = Paragraph("", s_cell)
+
+        detail_data.append([
+            Paragraph(r.get("analyte_name", ""), s_cell),
+            val_para,
+            Paragraph(str(r.get("unit") or ""), s_cell),
+            Paragraph(str(r.get("reference_range_text") or ""), s_cell),
+            flag_para,
+        ])
+
+    detail_table = Table(detail_data,
+        colWidths=[2.2 * inch, 1.2 * inch, 0.8 * inch, 1.8 * inch, 1.0 * inch])
+    detail_style = [
+        ("BACKGROUND", (0, 0), (-1, 0), PRIMARY),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("GRID", (0, 0), (-1, -1), 0.5, BORDER),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+    ]
+    for i in range(1, len(detail_data)):
+        row = detail_data[i]
+        if isinstance(row[1], str) and row[1] == "":
+            detail_style.append(("SPAN", (0, i), (-1, i)))
+            detail_style.append(("BACKGROUND", (0, i), (-1, i), colors.HexColor("#eff6ff")))
+        elif i % 2 == 0:
+            detail_style.append(("BACKGROUND", (0, i), (-1, i), LIGHT_BG))
+
+    detail_table.setStyle(TableStyle(detail_style))
+    elements.append(detail_table)
+    elements.append(Spacer(1, 15))
+
+    # ===== SIGNATURES =====
+    sig_data = [[
+        Paragraph("____________________________<br/><b>Tecnologo Medico</b>",
+            ParagraphStyle("sig", parent=s_cell, fontSize=8, alignment=TA_CENTER)),
+        Paragraph("____________________________<br/><b>Bioquimico Responsable</b>",
+            ParagraphStyle("sig2", parent=s_cell, fontSize=8, alignment=TA_CENTER)),
+    ]]
+    sig_table = Table(sig_data, colWidths=[3.5 * inch, 3.5 * inch])
+    sig_table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
+        ("TOPPADDING", (0, 0), (-1, -1), 20),
+    ]))
+    elements.append(sig_table)
+
+    # ===== FOOTER =====
+    elements.append(Spacer(1, 15))
+    elements.append(Paragraph(
+        "Documento generado electronicamente — Dimed-LIS | "
+        "Los valores de referencia pueden variar segun edad, sexo y condicion del paciente.",
+        s_footer))
+
+    doc.build(elements)
+    buf.seek(0)
+    return buf.read()
 
 
 # ===================================================================

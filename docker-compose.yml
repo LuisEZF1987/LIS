@@ -74,6 +74,13 @@ services:
       PG_PASSWORD: ${PG_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       LIS_PORT: "9008"
+      INSTITUTION_NAME: ${SRI_RAZON_SOCIAL:-Laboratorio}
+      INSTITUTION_RUC: ${SRI_RUC:-}
+      INSTITUTION_ADDRESS: ${SRI_DIRECCION_MATRIZ:-}
+      INSTITUTION_PHONE: ${INSTITUTION_PHONE:-}
+      LOGO_PATH: /certs/logo.png
+    volumes:
+      - ./certs:/certs:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -101,8 +108,9 @@ services:
       SRI_DIRECCION_MATRIZ: ${SRI_DIRECCION_MATRIZ:-}
       SRI_CERT_PATH: ${SRI_CERT_PATH:-}
       SRI_CERT_PASSWORD: ${SRI_CERT_PASSWORD:-}
+      LOGO_PATH: /certs/logo.png
     volumes:
-      - certs:/certs:ro
+      - ./certs:/certs:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -139,7 +147,6 @@ services:
 
 volumes:
   pgdata:
-  certs:
 
 networks:
   backend:

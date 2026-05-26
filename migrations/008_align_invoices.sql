@@ -24,6 +24,13 @@ ALTER TABLE lis_payment_applications DROP CONSTRAINT IF EXISTS lis_payment_appli
 ALTER TABLE lis_payment_applications ADD CONSTRAINT lis_payment_applications_payment_source_check
     CHECK (payment_source IN ('cash','pos','transfer','credit_note','efectivo','tarjeta_debito','tarjeta_credito','transferencia'));
 
+-- journal_entries also needs branch_id
+ALTER TABLE lis_journal_entries ADD COLUMN IF NOT EXISTS branch_id INTEGER;
+
+-- branches need SRI emission point columns
+ALTER TABLE lis_branches ADD COLUMN IF NOT EXISTS establecimiento VARCHAR(10) DEFAULT '001';
+ALTER TABLE lis_branches ADD COLUMN IF NOT EXISTS punto_emision VARCHAR(10) DEFAULT '001';
+
 -- Index for SRI lookups
 CREATE INDEX IF NOT EXISTS idx_lis_invoices_sri ON lis_invoices(sri_clave_acceso);
 CREATE INDEX IF NOT EXISTS idx_lis_invoices_secuencial ON lis_invoices(secuencial);
