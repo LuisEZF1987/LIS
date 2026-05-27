@@ -259,16 +259,19 @@ def _get_current_user():
 # Role-based access control
 # ---------------------------------------------------------------------------
 
+_SA = "super_admin"
 _ROLE_ACCESS = {
-    "dashboard":    ["admin", "recepcion", "laboratorista", "bioquimico", "contador"],
-    "laboratorio":  ["admin", "laboratorista", "bioquimico"],
-    "facturacion":  ["admin", "contador"],
-    "caja":         ["admin", "recepcion", "contador"],
-    "pacientes":    ["admin", "recepcion", "laboratorista"],
-    "reportes":     ["admin", "contador"],
+    "dashboard":      [_SA, "admin", "recepcion", "laboratorista", "bioquimico", "contador"],
+    "laboratorio":    [_SA, "admin", "laboratorista", "bioquimico"],
+    "facturacion":    [_SA, "admin", "contador"],
+    "caja":           [_SA, "admin", "recepcion", "contador"],
+    "pacientes":      [_SA, "admin", "recepcion", "laboratorista"],
+    "reportes":       [_SA, "admin", "contador"],
+    "configuracion":  [_SA],
 }
 
 _ROLE_DEFAULT_PAGE = {
+    "super_admin":   "/app/configuracion",
     "admin":         "/app/dashboard",
     "recepcion":     "/app/caja",
     "laboratorista": "/app/laboratorio",
@@ -441,6 +444,20 @@ def page_pacientes():
 @require_auth("reportes")
 def page_reportes():
     return render_template("reportes.html", user=request.current_user, page="reportes")
+
+
+@app.route("/app/configuracion")
+@require_auth("configuracion")
+def page_configuracion():
+    mode = _check_license()
+    return render_template(
+        "configuracion.html",
+        user=request.current_user,
+        page="configuracion",
+        lic_mode=mode,
+        lic_key=LICENSE_KEY[-8:] if LICENSE_KEY else "",
+        lic_server=LICENSE_SERVER,
+    )
 
 # ═══════════════════════════════════════════════════════════════════════════
 # PROXY TO MICROSERVICES
@@ -739,6 +756,158 @@ def dashboard_kpis():
         return jsonify({"error": "Error obteniendo indicadores"}), 500
     finally:
         put_db(conn)
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ADMIN: USER MANAGEMENT (super_admin only)
+# ═══════════════════════════════════════════════════════════════════════════
+
+_USER_COLS = "id, username, email, full_name, role, branch_id, is_active, last_login, created_at"
+_ALL_ROLES = ["super_admin", "admin", "recepcion", "laboratorista", "bioquimico", "contador"]
+
+
+@app.route("/api/admin/users", methods=["GET"])
+@require_auth("configuracion")
+def admin_list_users():
+    conn = get_db()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(f"SELECT {_USER_COLS} FROM lis_users ORDER BY role, full_name")
+            rows = [_row_to_dict(r) for r in cur.fetchall()]
+        return jsonify({"users": rows}), 200
+    finally:
+        put_db(conn)
+
+
+@app.route("/api/admin/users", methods=["POST"])
+@require_auth("configuracion")
+def admin_create_user():
+    data = request.get_json(silent=True) or {}
+    required = ("username", "email", "full_name", "role", "password")
+    missing = [f for f in required if not data.get(f, "").strip()]
+    if missing:
+        return jsonify({"error": f"Campos requeridos: {', '.join(missing)}"}), 400
+    if data["role"] not in _ALL_ROLES:
+        return jsonify({"error": "Rol invalido"}), 400
+
+    pw_hash = bcrypt.hashpw(data["password"].encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    conn = get_db()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "INSERT INTO lis_users (username, email, password_hash, full_name, role, branch_id) "
+                "VALUES (%s,%s,%s,%s,%s,%s) RETURNING " + _USER_COLS,
+                (
+                    data["username"].strip(),
+                    data["email"].strip().lower(),
+                    pw_hash,
+                    data["full_name"].strip(),
+                    data["role"],
+                    data.get("branch_id") or None,
+                ),
+            )
+            user = _row_to_dict(cur.fetchone())
+        conn.commit()
+        cu = request.current_user
+        log_audit(cu.get("user_id"), "CREATE_USER", "lis_users", user["id"],
+                  {"role": user["role"]}, request.remote_addr)
+        return jsonify({"user": user}), 201
+    except psycopg2.errors.UniqueViolation:
+        conn.rollback()
+        return jsonify({"error": "Usuario o email ya existe"}), 409
+    except Exception:
+        conn.rollback()
+        log.exception("Error creating user")
+        return jsonify({"error": "Error interno del servidor"}), 500
+    finally:
+        put_db(conn)
+
+
+@app.route("/api/admin/users/<int:uid>", methods=["PUT"])
+@require_auth("configuracion")
+def admin_update_user(uid):
+    data = request.get_json(silent=True) or {}
+    conn = get_db()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT role FROM lis_users WHERE id = %s", (uid,))
+            row = cur.fetchone()
+            if not row:
+                return jsonify({"error": "Usuario no encontrado"}), 404
+
+            sets, vals = [], []
+            for col in ("username", "email", "full_name", "branch_id"):
+                if col in data:
+                    sets.append(f"{col} = %s")
+                    vals.append(data[col] if data[col] != "" else None)
+            if "role" in data:
+                if data["role"] not in _ALL_ROLES:
+                    return jsonify({"error": "Rol invalido"}), 400
+                # Cannot change super_admin role via API (protect the role)
+                if row["role"] == "super_admin" and data["role"] != "super_admin":
+                    return jsonify({"error": "No se puede cambiar el rol de super_admin"}), 403
+                sets.append("role = %s")
+                vals.append(data["role"])
+            if "is_active" in data:
+                sets.append("is_active = %s")
+                vals.append(bool(data["is_active"]))
+            if data.get("password", "").strip():
+                pw_hash = bcrypt.hashpw(
+                    data["password"].encode("utf-8"), bcrypt.gensalt()
+                ).decode("utf-8")
+                sets.append("password_hash = %s")
+                vals.append(pw_hash)
+            if not sets:
+                return jsonify({"error": "Sin cambios"}), 400
+
+            sets.append("updated_at = NOW()")
+            vals.append(uid)
+            cur.execute(
+                f"UPDATE lis_users SET {', '.join(sets)} WHERE id = %s RETURNING {_USER_COLS}",
+                vals,
+            )
+            user = _row_to_dict(cur.fetchone())
+        conn.commit()
+        cu = request.current_user
+        log_audit(cu.get("user_id"), "UPDATE_USER", "lis_users", uid, None, request.remote_addr)
+        return jsonify({"user": user}), 200
+    except psycopg2.errors.UniqueViolation:
+        conn.rollback()
+        return jsonify({"error": "Usuario o email ya existe"}), 409
+    except Exception:
+        conn.rollback()
+        log.exception("Error updating user")
+        return jsonify({"error": "Error interno del servidor"}), 500
+    finally:
+        put_db(conn)
+
+
+@app.route("/api/admin/users/<int:uid>", methods=["DELETE"])
+@require_auth("configuracion")
+def admin_delete_user(uid):
+    cu = request.current_user
+    if cu.get("user_id") == uid:
+        return jsonify({"error": "No puedes eliminar tu propia cuenta"}), 403
+    conn = get_db()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT role, full_name FROM lis_users WHERE id = %s", (uid,))
+            row = cur.fetchone()
+            if not row:
+                return jsonify({"error": "Usuario no encontrado"}), 404
+            if row["role"] == "super_admin":
+                return jsonify({"error": "Los usuarios super_admin no pueden ser eliminados"}), 403
+            cur.execute("DELETE FROM lis_users WHERE id = %s", (uid,))
+        conn.commit()
+        log_audit(cu.get("user_id"), "DELETE_USER", "lis_users", uid,
+                  {"full_name": row["full_name"]}, request.remote_addr)
+        return jsonify({"status": "deleted"}), 200
+    except Exception:
+        conn.rollback()
+        log.exception("Error deleting user")
+        return jsonify({"error": "Error interno del servidor"}), 500
+    finally:
+        put_db(conn)
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # HEALTH CHECK
