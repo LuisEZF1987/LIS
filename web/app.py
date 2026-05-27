@@ -6,11 +6,13 @@ patient API, and reverse proxy to LIS/Billing microservices.
 """
 
 import functools
+import json as _json
 import logging
 import os
 import time
 from datetime import datetime, timedelta, timezone, date
 from decimal import Decimal
+from pathlib import Path
 
 import bcrypt
 import jwt
@@ -19,7 +21,7 @@ import psycopg2.extras
 import psycopg2.pool
 import requests as _req
 from flask import (
-    Flask, jsonify, redirect, render_template, request, url_for,
+    Flask, g, jsonify, redirect, render_template, request, url_for,
 )
 from flask.json.provider import DefaultJSONProvider
 
@@ -54,6 +56,11 @@ BILLING_URL = os.environ.get("BILLING_URL", "http://billing:9009")
 WEB_PORT = int(os.environ.get("WEB_PORT", "9000"))
 IS_DEBUG = os.environ.get("FLASK_DEBUG", "false").lower() in ("true", "1")
 
+LICENSE_KEY = os.environ.get("LICENSE_KEY", "")
+LICENSE_SERVER = os.environ.get("LICENSE_SERVER", "")
+_LICENSE_CACHE_FILE = "/tmp/lis_license.json"
+_LICENSE_CACHE_TTL = 86400  # 24h
+
 # ---------------------------------------------------------------------------
 # Custom JSON provider (handle dates, Decimal from PostgreSQL)
 # ---------------------------------------------------------------------------
@@ -76,6 +83,75 @@ app.json = _JSONProvider(app)
 # ---------------------------------------------------------------------------
 # Security headers
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# License enforcement
+# ---------------------------------------------------------------------------
+
+
+def _check_license() -> str:
+    """Returns 'full', 'readonly', or 'blocked'. Defaults to 'full' if unconfigured."""
+    if not LICENSE_KEY or not LICENSE_SERVER:
+        return "full"
+    # Check cache
+    try:
+        cached = _json.loads(Path(_LICENSE_CACHE_FILE).read_text())
+        if time.time() - cached.get("ts", 0) < _LICENSE_CACHE_TTL:
+            return cached.get("mode", "full")
+    except Exception:
+        pass
+    # Fetch from server
+    try:
+        r = _req.get(
+            f"{LICENSE_SERVER}/check",
+            params={"key": LICENSE_KEY},
+            timeout=5,
+        )
+        mode = r.json().get("mode", "full") if r.status_code == 200 else "full"
+        Path(_LICENSE_CACHE_FILE).write_text(
+            _json.dumps({"mode": mode, "ts": time.time()})
+        )
+        return mode
+    except Exception:
+        # Can't reach server — use stale cache, else default to full (grace)
+        try:
+            return _json.loads(Path(_LICENSE_CACHE_FILE).read_text()).get("mode", "full")
+        except Exception:
+            return "full"
+
+
+@app.before_request
+def _enforce_license():
+    mode = _check_license()
+    g.license_mode = mode
+    if mode == "blocked" and request.path.startswith("/app/"):
+        return redirect("/license-expired")
+
+
+@app.context_processor
+def _inject_license():
+    return {"license_mode": g.get("license_mode", "full")}
+
+
+@app.route("/license-expired")
+def license_expired():
+    return """<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
+    <title>Licencia Vencida</title>
+    <style>body{background:#020617;color:#e2e8f0;font-family:system-ui;
+    display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
+    .box{background:rgba(15,23,42,0.8);border:1px solid rgba(239,68,68,0.3);
+    border-radius:1rem;padding:2.5rem;max-width:480px;text-align:center}
+    h1{color:#f87171;margin-top:0}p{color:#94a3b8}
+    a{color:#60a5fa;text-decoration:none}</style></head>
+    <body><div class="box">
+    <h1>&#128274; Licencia Vencida</h1>
+    <p>Su licencia de <strong>Dimed-LIS</strong> ha vencido.</p>
+    <p>Contacte a su proveedor para renovar y continuar usando el sistema.</p>
+    <p style="margin-top:2rem;font-size:0.85rem">
+      <a href="mailto:soporte@dimed.com.ec">soporte@dimed.com.ec</a>
+    </p>
+    </div></body></html>""", 403
 
 
 @app.after_request
@@ -409,12 +485,16 @@ def _proxy(target_base, path):
 @app.route("/api/lis/<path:subpath>", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 @require_auth()
 def proxy_lis(subpath):
+    if request.method == "POST" and g.get("license_mode") == "readonly":
+        return jsonify({"error": "Licencia vencida. Sistema en modo solo lectura."}), 403
     return _proxy(LIS_URL, f"api/erp/lis/{subpath}")
 
 
 @app.route("/api/billing/<path:subpath>", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 @require_auth()
 def proxy_billing(subpath):
+    if request.method == "POST" and g.get("license_mode") == "readonly":
+        return jsonify({"error": "Licencia vencida. Sistema en modo solo lectura."}), 403
     return _proxy(BILLING_URL, f"api/billing/{subpath}")
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -478,6 +558,8 @@ def list_patients():
 @app.route("/api/patients", methods=["POST"])
 @require_auth()
 def create_patient():
+    if g.get("license_mode") == "readonly":
+        return jsonify({"error": "Licencia vencida. Sistema en modo solo lectura."}), 403
     data = request.get_json(silent=True) or {}
     required = ("document_type", "document_id", "first_name", "last_name")
     missing = [f for f in required if not data.get(f, "").strip()]

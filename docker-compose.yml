@@ -79,6 +79,7 @@ services:
       INSTITUTION_ADDRESS: ${SRI_DIRECCION_MATRIZ:-}
       INSTITUTION_PHONE: ${INSTITUTION_PHONE:-}
       LOGO_PATH: /certs/logo.png
+      NOTIFY_URL: http://notification:9004
     volumes:
       - ./certs:/certs:ro
     depends_on:
@@ -119,6 +120,35 @@ services:
     networks:
       - backend
 
+  notification:
+    <<: *common
+    build: ./notification
+    container_name: dimed-lis-notification
+    environment:
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-dimed_lis}
+      PG_USER: ${PG_USER:-dimed}
+      PG_PASSWORD: ${PG_PASSWORD}
+      LIS_URL: http://lis:9008
+      LIS_SERVICE_TOKEN: ${LIS_SERVICE_TOKEN:-}
+      INSTITUTION_NAME: ${SRI_RAZON_SOCIAL:-Laboratorio}
+      LOGO_PATH: /certs/logo.png
+      NOTIFY_PORT: "9004"
+    volumes:
+      - ./certs:/certs:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      lis:
+        condition: service_started
+    networks:
+      - backend
+
   web:
     <<: *common
     build: ./web
@@ -133,12 +163,16 @@ services:
       LIS_URL: http://lis:9008
       BILLING_URL: http://billing:9009
       WEB_PORT: "9000"
+      LICENSE_KEY: ${LICENSE_KEY:-}
+      LICENSE_SERVER: ${LICENSE_SERVER:-}
     ports:
       - "${WEB_PORT:-9100}:9000"
     depends_on:
       lis:
         condition: service_started
       billing:
+        condition: service_started
+      notification:
         condition: service_started
       init:
         condition: service_completed_successfully

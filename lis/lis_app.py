@@ -703,6 +703,7 @@ def _notify_patient_lab_ready(sample, cur):
         _req.post(f"{NOTIFY_URL}/api/notify/lab", json={
             "patient_document": patient_doc,
             "order_description": order_desc,
+            "sample_id": sample.get("id"),
         }, timeout=5)
         log.info("Lab notification sent for patient %s, sample %s", patient_doc, sample.get("id"))
     except Exception:
